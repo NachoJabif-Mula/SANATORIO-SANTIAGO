@@ -1,0 +1,6 @@
+@BaresFamilia.Nube.Api_HostAddress = http://localhost:5280
+
+GET {{BaresFamilia.Nube.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

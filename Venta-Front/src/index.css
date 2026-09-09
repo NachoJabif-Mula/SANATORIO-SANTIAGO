@@ -1,0 +1,400 @@
+@import "tailwindcss";
+
+/* ============================================
+   BARES FAMILIA — POS Design System
+   Modo Oscuro: Gris Pizarra (Slate) de Alto Contraste
+   ============================================ */
+
+@theme {
+  /* Grafito/Carbón Mate — Backgrounds (Sobrios y profesionales) */
+  --color-slate-950: var(--slate-950);
+  --color-slate-900: var(--slate-900);
+  --color-slate-850: var(--slate-850);
+  --color-slate-800: var(--slate-800);
+  --color-slate-700: var(--slate-700);
+  --color-slate-600: var(--slate-600);
+  --color-slate-500: var(--slate-500);
+  --color-slate-400: var(--slate-400);
+  --color-slate-300: var(--slate-300);
+
+  /* Superficies de Cards y Paneles */
+  --color-surface-base: var(--surface-base);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-overlay: var(--surface-overlay);
+
+  /* Texto — Jerarquía Clara */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-inverse: var(--text-inverse);
+
+  /* Bordes Delgados y Definidos */
+  --color-border-default: var(--border-default);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+
+  /* Acento POS — Champagne Gold / Bronce Refinado (Muted Gold) */
+  --color-amber-50: var(--amber-50);
+  --color-amber-100: var(--amber-100);
+  --color-amber-200: var(--amber-200);
+  --color-amber-300: var(--amber-300);
+  --color-amber-400: var(--amber-400);
+  --color-amber-500: var(--amber-500);
+  --color-amber-600: var(--amber-600);
+  --color-amber-700: var(--amber-700);
+
+  /* Acento Secundario — Muted Cyan */
+  --color-cyan-400: var(--cyan-400);
+  --color-cyan-500: var(--cyan-500);
+  --color-cyan-600: var(--cyan-600);
+
+  /* Semánticos */
+  --color-success-400: var(--success-400);
+  --color-success-500: var(--success-500);
+  --color-success-600: var(--success-600);
+  --color-warning-400: var(--warning-400);
+  --color-warning-500: var(--warning-500);
+  --color-warning-600: var(--warning-600);
+  --color-danger-400: var(--danger-400);
+  --color-danger-500: var(--danger-500);
+  --color-danger-600: var(--danger-600);
+  --color-info-400: var(--info-400);
+  --color-info-500: var(--info-500);
+
+  /* Tipografía */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+
+  /* Sombras y Outlines Limpios (Cero neón, estilo corporativo serio) */
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
+  --shadow-glow-amber: 0 0 0 1px rgba(195, 142, 59, 0.2), 0 4px 12px rgba(195, 142, 59, 0.08);
+  --shadow-glow-success: 0 0 0 1px rgba(34, 197, 94, 0.2), 0 4px 12px rgba(34, 197, 94, 0.08);
+  --shadow-glow-danger: 0 0 0 1px rgba(239, 68, 68, 0.2), 0 4px 12px rgba(239, 68, 68, 0.08);
+  --shadow-modal: var(--shadow-modal);
+
+  /* Radios Geométricos y Limpios */
+  --radius-card: 0.75rem;
+  --radius-btn: 0.5rem;
+  --radius-input: 0.5rem;
+  --radius-badge: 9999px;
+  --radius-numpad: 0.5rem;
+}
+
+:root {
+  /* Default: Dark Mode (Graphite Theme) */
+  --slate-950: #0a0b10;
+  --slate-900: #111218;
+  --slate-850: #161822;
+  --slate-800: #1c1f2e;
+  --slate-700: #292d3e;
+  --slate-600: #3c425c;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+  --slate-300: #cbd5e1;
+
+  --surface-base: #111218;
+  --surface-raised: #161822;
+  --surface-overlay: #292d3e;
+
+  --text-primary: #ffffff;
+  --text-secondary: #d4d4d8;
+  --text-muted: #71717a;
+  --text-inverse: #0a0b10;
+
+  --border-default: #222638;
+  --border-subtle: #171a27;
+  --border-strong: #333952;
+
+  --amber-50: #faf6ee;
+  --amber-100: #f3e9d4;
+  --amber-200: #e7d2aa;
+  --amber-300: #dbbc80;
+  --amber-400: #cfa555;
+  --amber-500: #c38e3b;
+  --amber-600: #a37229;
+  --amber-700: #7d541e;
+
+  --cyan-400: #7ecbd2;
+  --cyan-500: #49a2a9;
+  --cyan-600: #2d7378;
+
+  --success-400: #86efac;
+  --success-500: #22c55e;
+  --success-600: #15803d;
+  --warning-400: #fde047;
+  --warning-500: #eab308;
+  --warning-600: #ca8a04;
+  --danger-400: #fca5a5;
+  --danger-500: #ef4444;
+  --danger-600: #b91c1c;
+  --info-400: #93c5fd;
+  --info-500: #3b82f6;
+
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-card-hover: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 24px 48px rgba(0, 0, 0, 0.7);
+}
+
+:root.light {
+  /* Light Mode (Clean Zinc Theme) */
+  --slate-950: #f4f4f5;
+  --slate-900: #ffffff;
+  --slate-850: #fafafa;
+  --slate-800: #f0f0f2;
+  --slate-700: #e4e7eb;
+  --slate-600: #cbd5e1;
+  --slate-500: #71717a;
+  --slate-400: #a1a1aa;
+  --slate-300: #27272a;
+
+  --surface-base: #ffffff;
+  --surface-raised: #fafafa;
+  --surface-overlay: #e4e7eb;
+
+  --text-primary: #09090b;
+  --text-secondary: #27272a;
+  --text-muted: #71717a;
+  --text-inverse: #ffffff;
+
+  --border-default: #e4e7eb;
+  --border-subtle: #f1f5f9;
+  --border-strong: #cbd5e1;
+
+  --amber-50: #fef3c7;
+  --amber-100: #fde68a;
+  --amber-200: #fcd34d;
+  --amber-300: #fbbf24;
+  --amber-400: #f59e0b;
+  --amber-500: #b45309; /* Darker amber/gold for light bg readability */
+  --amber-600: #9a3412;
+  --amber-700: #7c2d12;
+
+  --cyan-400: #22d3ee;
+  --cyan-500: #0891b2;
+  --cyan-600: #0e7490;
+
+  --success-400: #4ade80;
+  --success-500: #16a34a;
+  --success-600: #14532d;
+  --warning-400: #fbbf24;
+  --warning-500: #ca8a04;
+  --warning-600: #713f12;
+  --danger-400: #f87171;
+  --danger-500: #dc2626;
+  --danger-600: #7f1d1d;
+  --info-400: #60a5fa;
+  --info-500: #1d4ed8;
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.08);
+  --shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+}
+
+/* ============================================
+   Base
+   ============================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-slate-950);
+  color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  height: 100vh;
+  /* Deshabilitar selección de texto para POS táctil */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ============================================
+   Scrollbar POS (sutil y oscura)
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-slate-600);
+  border-radius: var(--radius-badge);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-slate-500);
+}
+
+/* ============================================
+   Animaciones POS
+   ============================================ */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 12px rgba(245, 158, 11, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+  }
+}
+
+@keyframes numpad-press {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-content-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.4s ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.35s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.25s ease-out forwards;
+}
+
+.animate-shake {
+  animation: shake 0.5s ease-in-out;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s infinite;
+}
+
+.animate-numpad-press {
+  animation: numpad-press 0.12s ease-out;
+}
+
+.animate-modal-backdrop {
+  animation: modal-backdrop-in 0.2s ease-out forwards;
+}
+
+.animate-modal-content {
+  animation: modal-content-in 0.3s ease-out forwards;
+}
+
+/* Stagger children */
+.stagger-children > * {
+  opacity: 0;
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.stagger-children > *:nth-child(1) { animation-delay: 0.03s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.09s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.12s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.15s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.18s; }
+.stagger-children > *:nth-child(7) { animation-delay: 0.21s; }
+.stagger-children > *:nth-child(8) { animation-delay: 0.24s; }
+.stagger-children > *:nth-child(9) { animation-delay: 0.27s; }
+
+/* ============================================
+   Touch Utilities
+   ============================================ */
+
+.touch-btn {
+  min-height: 56px;
+  min-width: 56px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.touch-btn:active {
+  transform: scale(0.95);
+}
+
+/* ============================================
+   Glass Effect (para modales/overlays)
+   ============================================ */
+
+.glass {
+  background: rgba(15, 22, 41, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(36, 48, 86, 0.6);
+}
+
+:root.light .glass {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(228, 231, 235, 0.6);
+}

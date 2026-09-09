@@ -1,0 +1,24 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS dev
+WORKDIR /app
+
+# Copiamos la solución y los proyectos para restaurar paquetes
+COPY ["BaresFamilia.sln", "./"]
+COPY ["src/BaresFamilia.Core.Models/BaresFamilia.Core.Models.csproj", "src/BaresFamilia.Core.Models/"]
+COPY ["src/BaresFamilia.Infrastructure/BaresFamilia.Infrastructure.csproj", "src/BaresFamilia.Infrastructure/"]
+COPY ["src/BaresFamilia.Local.Api/BaresFamilia.Local.Api.csproj", "src/BaresFamilia.Local.Api/"]
+COPY ["src/BaresFamilia.Nube.Api/BaresFamilia.Nube.Api.csproj", "src/BaresFamilia.Nube.Api/"]
+COPY ["src/BaresFamilia.Fiscal.Engine/BaresFamilia.Fiscal.Engine.csproj", "src/BaresFamilia.Fiscal.Engine/"]
+COPY ["src/BaresFamilia.Printing.Cli/BaresFamilia.Printing.Cli.csproj", "src/BaresFamilia.Printing.Cli/"]
+COPY ["src/BaresFamilia.Fiscal.Cli/BaresFamilia.Fiscal.Cli.csproj", "src/BaresFamilia.Fiscal.Cli/"]
+COPY ["src/BaresFamilia.PrintBridge/BaresFamilia.PrintBridge.csproj", "src/BaresFamilia.PrintBridge/"]
+
+RUN dotnet restore
+
+# Copiamos todo el código fuente
+COPY . .
+
+# Exponemos el puerto de Local API
+EXPOSE 5044
+
+# Ejecutamos con dotnet watch para recarga en caliente
+CMD ["dotnet", "watch", "run", "--project", "src/BaresFamilia.Local.Api/BaresFamilia.Local.Api.csproj", "--urls", "http://0.0.0.0:5044"]

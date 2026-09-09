@@ -1,0 +1,175 @@
+services:
+  # ═══════════════════════════════════════════════════════════════════
+  # BASES DE DATOS
+  # ═══════════════════════════════════════════════════════════════════
+
+  nube-db:
+    image: postgres:15-alpine
+    container_name: bares_nube_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: baresfamilia_nube
+    ports:
+      - "5433:5432"
+    volumes:
+      - nube_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bares-network
+
+  local-db:
+    image: postgres:15-alpine
+    container_name: bares_local_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: baresfamilia_local
+    ports:
+      - "5434:5432"
+    volumes:
+      - local_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bares-network
+
+  # ═══════════════════════════════════════════════════════════════════
+  # BACKEND APIs (.NET)
+  # ═══════════════════════════════════════════════════════════════════
+
+  nube-api:
+    build:
+      context: ./Backend-General
+      dockerfile: Dockerfile.Nube
+    container_name: bares_nube_api
+    ports:
+      - "5280:5280"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__NubeConnection=Host=nube-db;Port=5432;Database=baresfamilia_nube;Username=postgres;Password=postgres
+    depends_on:
+      nube-db:
+        condition: service_healthy
+    volumes:
+      - ./Backend-General:/app
+      - /app/bin
+      - /app/obj
+      - /app/src/BaresFamilia.Core.Models/bin
+      - /app/src/BaresFamilia.Core.Models/obj
+      - /app/src/BaresFamilia.Infrastructure/bin
+      - /app/src/BaresFamilia.Infrastructure/obj
+      - /app/src/BaresFamilia.Nube.Api/bin
+      - /app/src/BaresFamilia.Nube.Api/obj
+      - /app/src/BaresFamilia.Fiscal.Engine/bin
+      - /app/src/BaresFamilia.Fiscal.Engine/obj
+      - /app/src/BaresFamilia.Printing.Cli/bin
+      - /app/src/BaresFamilia.Printing.Cli/obj
+      - /app/src/BaresFamilia.Fiscal.Cli/bin
+      - /app/src/BaresFamilia.Fiscal.Cli/obj
+      - /app/src/BaresFamilia.PrintBridge/bin
+      - /app/src/BaresFamilia.PrintBridge/obj
+    networks:
+      - bares-network
+
+  local-api:
+    build:
+      context: ./Backend-General
+      dockerfile: Dockerfile.Local
+    container_name: bares_local_api
+    ports:
+      - "5044:5044"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__LocalConnection=Host=local-db;Port=5432;Database=baresfamilia_local;Username=postgres;Password=postgres
+      - NubeApi__BaseUrl=http://nube-api:5280
+    depends_on:
+      local-db:
+        condition: service_healthy
+      nube-api:
+        condition: service_started
+    volumes:
+      - ./Backend-General:/app
+      - /app/bin
+      - /app/obj
+      - /app/src/BaresFamilia.Core.Models/bin
+      - /app/src/BaresFamilia.Core.Models/obj
+      - /app/src/BaresFamilia.Infrastructure/bin
+      - /app/src/BaresFamilia.Infrastructure/obj
+      - /app/src/BaresFamilia.Local.Api/bin
+      - /app/src/BaresFamilia.Local.Api/obj
+      - /app/src/BaresFamilia.Fiscal.Engine/bin
+      - /app/src/BaresFamilia.Fiscal.Engine/obj
+      - /app/src/BaresFamilia.Printing.Cli/bin
+      - /app/src/BaresFamilia.Printing.Cli/obj
+      - /app/src/BaresFamilia.Fiscal.Cli/bin
+      - /app/src/BaresFamilia.Fiscal.Cli/obj
+      - /app/src/BaresFamilia.PrintBridge/bin
+      - /app/src/BaresFamilia.PrintBridge/obj
+    networks:
+      - bares-network
+
+  # ═══════════════════════════════════════════════════════════════════
+  # FRONTEND Apps (React)
+  # ═══════════════════════════════════════════════════════════════════
+
+  backoffice-front:
+    build:
+      context: ./Backoffice-Front
+      dockerfile: Dockerfile
+    container_name: bares_backoffice
+    ports:
+      - "5173:5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - VITE_API_BASE_URL=http://localhost:5280/api
+    depends_on:
+      - nube-api
+    volumes:
+      - ./Backoffice-Front:/app
+      - /app/node_modules
+    networks:
+      - bares-network
+
+  venta-front:
+    build:
+      context: ./Venta-Front
+      dockerfile: Dockerfile
+    container_name: bares_venta
+    ports:
+      - "5174:5174"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - VITE_LOCAL_API_URL=http://localhost:5044/api
+    depends_on:
+      - local-api
+    volumes:
+      - ./Venta-Front:/app
+      - /app/node_modules
+    networks:
+      - bares-network
+
+# ═══════════════════════════════════════════════════════════════════
+# VOLÚMENES PERSISTENTES
+# ═══════════════════════════════════════════════════════════════════
+
+volumes:
+  nube_db_data:
+    driver: local
+  local_db_data:
+    driver: local
+
+# ═══════════════════════════════════════════════════════════════════
+# RED PERSONALIZADA
+# ═══════════════════════════════════════════════════════════════════
+
+networks:
+  bares-network:
+    driver: bridge

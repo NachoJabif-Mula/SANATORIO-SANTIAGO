@@ -1,0 +1,6 @@
+@BaresFamilia.Local.Api_HostAddress = http://localhost:5044
+
+GET {{BaresFamilia.Local.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

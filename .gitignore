@@ -1,0 +1,51 @@
+# IDEs
+.vs/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# .NET
+bin/
+obj/
+*.csproj.user
+*.suo
+*.sln.docstates
+.vs/
+packages/
+*.nupkg
+*.snupkg
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+appsettings.Development.json
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
+.claudecode
+
+graphify-out
+COMPARATIVA_Y_PLAN_IMPRESIONES.md
+CUENTA_CORRIENTE_IMPLEMENTACION.md
+DBEAVER_SETUP.md
+DEVELOPMENT.md
+CLAUDE_CODE_PROMPT.md
