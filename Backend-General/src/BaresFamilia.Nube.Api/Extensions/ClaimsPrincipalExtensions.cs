@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BaresFamilia.Core.Models.Contratos;
 
 namespace BaresFamilia.Nube.Api.Extensions;
 
@@ -22,4 +23,11 @@ public static class ClaimsPrincipalExtensions
         var value = user.FindFirstValue(EsGlobalClaim);
         return bool.TryParse(value, out var esGlobal) && esGlobal;
     }
+
+    /// <summary>
+    /// Empaqueta el alcance del usuario para pasárselo a la capa de servicios, que
+    /// aplica las reglas de visibilidad sin depender de los claims ni de HTTP.
+    /// </summary>
+    public static AlcanceUsuario GetAlcance(this ClaimsPrincipal user)
+        => new(user.IsGlobal(), user.GetSucursalId());
 }

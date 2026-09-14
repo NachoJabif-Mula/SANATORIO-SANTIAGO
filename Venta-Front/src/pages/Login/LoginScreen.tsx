@@ -89,90 +89,71 @@ export default function LoginScreen() {
   }
 
   return (
-    <div className="h-screen w-screen flex items-center justify-center bg-slate-950 relative overflow-hidden">
-      {/* Background pattern (Very subtle) */}
-      <div className="absolute inset-0 opacity-[0.03]">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.15) 1px, transparent 0)`,
-            backgroundSize: '32px 32px',
-          }}
-        />
-      </div>
+    <div className="h-screen w-screen flex items-center justify-center bg-slate-950 pos-grid-bg p-6">
+      {/* Card: dos paneles como el mockup — branding+PIN a la izquierda, teclado a la derecha */}
+      <div className="relative z-10 w-full max-w-[880px] grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_320px] bg-surface-base border border-border-default rounded-[14px] overflow-hidden shadow-modal animate-scale-in">
 
-      {/* Gradient orbs (Extremely muted & slow pulse feel) */}
-      <div className="absolute top-[-25%] right-[-15%] w-[600px] h-[600px] rounded-full bg-amber-500/[0.02] blur-[150px] pointer-events-none" />
-      <div className="absolute bottom-[-25%] left-[-15%] w-[500px] h-[500px] rounded-full bg-cyan-500/[0.02] blur-[150px] pointer-events-none" />
-
-      {/* Login Card Container - Glassmorphic design */}
-      <div className="relative z-10 w-full max-w-[420px] mx-4 p-8 rounded-2xl bg-slate-900/50 backdrop-blur-2xl border border-border-default shadow-modal flex flex-col items-center gap-6 animate-scale-in">
-        
-        {/* Logo & Branding */}
-        <div className="flex flex-col items-center gap-3">
-          <div className="relative">
-            <div className="w-16 h-16 rounded-xl bg-slate-850 border border-amber-500/20 flex items-center justify-center shadow-card">
-              <ShieldCheck className="w-8 h-8 text-amber-500" />
+        {/* Panel izquierdo: branding + estado de PIN */}
+        <div className="p-9 flex flex-col justify-between gap-8 min-w-0">
+          {/* Branding */}
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-[22px] h-[22px] border-2 border-amber-500 rounded-full flex-shrink-0" />
+              <span className="text-[19px] font-semibold tracking-tight text-text-primary">
+                Bares Familia
+              </span>
             </div>
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-md bg-slate-950 border border-border-strong flex items-center justify-center">
-              <Lock className="w-3.5 h-3.5 text-amber-500/70" />
+            <div className="font-mono text-[11px] tracking-[0.12em] uppercase text-text-muted pl-[32px]">
+              Terminal de venta
             </div>
           </div>
 
-          <div className="text-center mt-1">
-            <h1 className="text-xl font-bold tracking-tight text-text-primary">
-              Bares <span className="text-text-secondary font-semibold">Familia</span>
-            </h1>
-            <p className="text-[10px] text-text-muted mt-0.5 tracking-widest uppercase font-bold">
-              Terminal Punto de Venta
-            </p>
+          {checkingUsers && !usersAvailable ? (
+            /* Estado de sincronización — esperando empleados */
+            <div className="flex flex-col items-center gap-4 py-6">
+              <div className="w-12 h-12 rounded-[var(--radius-btn)] bg-amber-500/5 border border-amber-500/20 flex items-center justify-center">
+                <Users className="w-6 h-6 text-amber-500" />
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-text-secondary text-sm font-semibold">Sincronizando empleados...</p>
+                <p className="text-text-muted text-xs max-w-[280px]">El sistema está descargando la base de datos local desde la Nube.</p>
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
+                <span className="text-[11px] font-medium text-text-muted font-mono">Espere por favor...</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-[18px]">
+              <div className="text-sm text-text-secondary">Ingrese su PIN de operador</div>
+              <div className="min-h-[18px] text-[12.5px] font-medium text-danger-500">
+                {errorMsg}
+              </div>
+            </div>
+          )}
+
+          {/* Info del dispositivo */}
+          <div className="flex flex-col gap-2">
+            <div className="font-mono text-[10px] tracking-[0.14em] uppercase text-text-muted">
+              Acceso seguro
+            </div>
+            <div className="flex items-center gap-2 text-text-muted text-[11px]">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span className="font-mono">
+                Terminal {localStorage.getItem('bf_pos_id')?.slice(0, 8) || 'LOCAL-POS'} · v1.1.0
+              </span>
+              <Lock className="w-3 h-3 opacity-60" />
+            </div>
           </div>
         </div>
 
-        {/* Separator - Sleek thin line */}
-        <div className="w-full h-[1px] bg-border-default/60" />
-
-        {checkingUsers && !usersAvailable ? (
-          /* Estado de sincronización — esperando empleados */
-          <div className="flex flex-col items-center gap-4 py-6">
-            <div className="w-12 h-12 rounded-xl bg-amber-500/5 border border-amber-500/10 flex items-center justify-center">
-              <Users className="w-6 h-6 text-amber-500/80" />
-            </div>
-            <div className="text-center space-y-1">
-              <p className="text-text-secondary text-sm font-semibold">Sincronizando empleados...</p>
-              <p className="text-text-muted text-xs max-w-[280px]">El sistema está descargando la base de datos local desde la Nube.</p>
-            </div>
-            <div className="flex items-center gap-2 mt-2">
-              <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
-              <span className="text-[11px] font-medium text-text-muted">Espere por favor...</span>
-            </div>
-          </div>
-        ) : (
-          <>
-            {/* Instrucción */}
-            <div className="text-center">
-              <p className="text-text-secondary text-sm font-medium">Ingrese su PIN personal</p>
-            </div>
-
-            {/* Numpad */}
-            <Numpad onSubmit={handleLogin} error={error} />
-
-            {/* Mensaje de error */}
-            <div className="h-4 flex items-center justify-center">
-              {errorMsg && (
-                <p className="text-danger-400 text-xs font-semibold animate-fade-in">{errorMsg}</p>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* Separator - Sleek thin line */}
-        <div className="w-full h-[1px] bg-border-default/30" />
-
-        {/* Pie con info */}
-        <div className="text-text-muted text-[10px] text-center space-y-0.5">
-          <p className="font-medium">Acceso seguro encriptado localmente</p>
-          <p className="text-text-muted/65">Terminal ID: {localStorage.getItem('bf_pos_id')?.slice(0,8) || 'LOCAL-POS'} — v1.1.0</p>
+        {/* Panel derecho: teclado numérico */}
+        <div className="bg-surface-overlay border-t sm:border-t-0 sm:border-l border-border-default p-6 flex items-center justify-center">
+          {checkingUsers && !usersAvailable ? (
+            <div className="text-center text-xs text-text-muted font-mono">Esperando datos…</div>
+          ) : (
+            <Numpad onSubmit={handleLogin} error={error} submitLabel="Ingresar" />
+          )}
         </div>
       </div>
     </div>

@@ -14,10 +14,12 @@ namespace BaresFamilia.Nube.Api.Controllers;
 public class MesaController : ControllerBase
 {
     private readonly IService<Mesa> _mesaService;
+    private readonly IMonitorSincronizacion _monitorSincronizacion;
 
-    public MesaController(IService<Mesa> mesaService)
+    public MesaController(IService<Mesa> mesaService, IMonitorSincronizacion monitorSincronizacion)
     {
         _mesaService = mesaService;
+        _monitorSincronizacion = monitorSincronizacion;
     }
 
     /// <summary>
@@ -27,7 +29,7 @@ public class MesaController : ControllerBase
     [ProducesResponseType(typeof(IEnumerable<Mesa>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetBySucursal(Guid sucursalId, [FromQuery] bool includeInactive = false, CancellationToken ct = default)
     {
-        SyncManagerStore.RecordPull(sucursalId, "mesas");
+        _monitorSincronizacion.RegistrarPull(sucursalId, TipoPull.Mesas);
         var mesas = includeInactive
             ? await _mesaService.FindAsync(m => m.SucursalId == sucursalId, ct)
             : await _mesaService.FindAsync(m => m.SucursalId == sucursalId && m.IsActive, ct);

@@ -1,21 +1,22 @@
-using BaresFamilia.Infrastructure.Data;
+using BaresFamilia.Core.Models.Contratos.Seguridad;
+using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace BaresFamilia.Local.Api.Controllers;
 
 /// <summary>
 /// Controlador local para gestionar la autenticación de usuarios del POS.
+/// Flujo: UsuarioController → IAutenticacionPosService → AutenticacionPosService → IUsuarioRepository → UsuarioRepository.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class UsuarioController : ControllerBase
 {
-    private readonly LocalContext _context;
+    private readonly IAutenticacionPosService _autenticacionService;
 
-    public UsuarioController(LocalContext context)
+    public UsuarioController(IAutenticacionPosService autenticacionService)
     {
-        _context = context;
+        _autenticacionService = autenticacionService;
     }
 
     /// <summary>
@@ -24,17 +25,12 @@ public class UsuarioController : ControllerBase
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginPinRequest request, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.Pin))
-            return BadRequest(new { message = "El PIN es obligatorio." });
-
-        var usuario = await _context.Usuarios
-            .Include(u => u.Rol)
-            .FirstOrDefaultAsync(u => u.PinAcceso == request.Pin.Trim() && u.IsActive, ct);
-
+        var usuario = await _autenticacionService.AutenticarPorPinAsync(request.Pin, ct);
         if (usuario is null)
             return Unauthorized(new { message = "PIN incorrecto o usuario inactivo." });
 
-        return Ok(new {
+        return Ok(new
+        {
             id = usuario.Id,
             nombre = usuario.Nombre,
             pin = usuario.PinAcceso,
@@ -49,14 +45,7 @@ public class UsuarioController : ControllerBase
     [HttpPost("validar-gerente")]
     public async Task<IActionResult> ValidarGerente([FromBody] LoginPinRequest request, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.Pin))
-            return BadRequest(new { message = "El PIN es obligatorio." });
-
-        var usuario = await _context.Usuarios
-            .Include(u => u.Rol)
-            .FirstOrDefaultAsync(u => u.PinAcceso == request.Pin.Trim() && u.IsActive, ct);
-
-        if (usuario is null || !(usuario.Rol.Permisos.Contains("gerente.override") || usuario.Rol.Nombre.ToLower() == "gerente"))
+        if (!await _autenticacionService.EsGerenteAsync(request.Pin, ct))
             return Unauthorized(new { message = "El PIN ingresado no corresponde a un gerente autorizado." });
 
         return Ok(new { valid = true });
@@ -69,12 +58,7 @@ public class UsuarioController : ControllerBase
     [HttpGet("disponibles")]
     public async Task<IActionResult> Disponibles(CancellationToken ct)
     {
-        var count = await _context.Usuarios.CountAsync(u => u.IsActive, ct);
+        var count = await _autenticacionService.ContarUsuariosDisponiblesAsync(ct);
         return Ok(new { disponibles = count > 0, count });
     }
-}
-
-public class LoginPinRequest
-{
-    public string Pin { get; set; } = string.Empty;
 }

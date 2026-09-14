@@ -171,32 +171,32 @@ export default function CierreCajaScreen() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-slate-950 overflow-hidden text-text-primary">
-      <header className="flex items-center justify-between px-5 py-4 bg-surface-base border-b border-border-default flex-shrink-0">
-        <div className="flex items-center gap-4">
-          {step === 'arqueo' && (
-            <button onClick={() => navigate('/')} className="touch-btn p-3 rounded-[var(--radius-btn)] bg-slate-900 text-text-secondary hover:text-text-primary hover:bg-slate-850 border border-border-default">
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-          )}
-          <div>
-            <h1 className="text-lg font-bold text-text-primary flex items-center gap-2">
-              <Lock className="w-5 h-5 text-amber-500" />
-              {step === 'arqueo' && 'Arqueo de Turno (Caja Ciega)'}
-              {step === 'resumen-turno' && 'Resumen del Turno Cerrado'}
-              {step === 'cierre-diario' && 'Cierre Diario Consolidado'}
-              {step === 'confirmado-diario' && 'Jornada Finalizada'}
-            </h1>
-            <p className="text-sm text-text-muted">
-              {step === 'arqueo' && 'Declare el efectivo exacto disponible en la caja física.'}
-              {step === 'resumen-turno' && 'Resultados de conciliación y ventas por método.'}
-              {step === 'cierre-diario' && 'Consolidación total de la caja operativa del día.'}
-              {step === 'confirmado-diario' && 'El sistema ha sido cerrado y bloqueado.'}
-            </p>
-          </div>
+      <header className="flex items-center gap-3 px-3.5 py-2 min-h-[56px] bg-surface-base border-b border-border-default flex-shrink-0">
+        {step === 'arqueo' && (
+          <button onClick={() => navigate('/')} className="touch-btn h-12 px-3 flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-surface-base text-text-primary hover:border-amber-500 hover:text-amber-500 border border-border-default text-[12.5px] font-medium min-h-0">
+            <ArrowLeft className="w-4 h-4" />
+            Mapa
+          </button>
+        )}
+        <div>
+          <h1 className="text-[15px] font-semibold text-text-primary">
+            {step === 'arqueo' && 'Arqueo de Turno (Caja Ciega)'}
+            {step === 'resumen-turno' && 'Resumen del Turno Cerrado'}
+            {step === 'cierre-diario' && 'Cierre Diario Consolidado'}
+            {step === 'confirmado-diario' && 'Jornada Finalizada'}
+          </h1>
+          <p className="font-mono text-[11px] text-text-muted">
+            {step === 'arqueo' && 'Declare el efectivo exacto disponible en la caja física.'}
+            {step === 'resumen-turno' && 'Resultados de conciliación y ventas por método.'}
+            {step === 'cierre-diario' && 'Consolidación total de la caja operativa del día.'}
+            {step === 'confirmado-diario' && 'El sistema ha sido cerrado y bloqueado.'}
+          </p>
         </div>
 
+        <div className="flex-1" />
+
         {turnoActivo && (
-          <div className="hidden sm:flex items-center gap-3 text-xs bg-slate-900 border border-border-default px-3 py-2 rounded-[var(--radius-btn)]">
+          <div className="hidden sm:flex items-center gap-3 text-xs bg-surface-overlay border border-border-default px-3 py-2 rounded-[var(--radius-btn)] font-mono">
             <span className="text-text-muted">Caja: <strong className="text-text-primary">{turnoActivo.cajaNombre}</strong></span>
             <span className="w-px h-3 bg-border-default" />
             <span className="text-text-muted">Operador: <strong className="text-text-primary">{turnoActivo.usuarioNombre}</strong></span>
@@ -630,8 +630,8 @@ export default function CierreCajaScreen() {
 
       {/* Modal Salvaguarda Mesas Abiertas */}
       {showMesasAbiertasModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-modal-backdrop">
-          <div className="bg-slate-900 border border-border-strong w-full max-w-md rounded-[var(--radius-card)] p-6 shadow-[var(--shadow-modal)] flex flex-col gap-5 animate-modal-content">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-modal-backdrop" style={{ backgroundColor: 'rgba(8, 9, 11, 0.55)' }}>
+          <div className="bg-surface-base border border-border-default w-full max-w-md rounded-[14px] p-6 shadow-modal flex flex-col gap-5 animate-modal-content">
             <div className="flex flex-col items-center gap-4 text-center">
               <div className="w-12 h-12 rounded-[var(--radius-btn)] bg-amber-500/10 border border-amber-500/25 flex items-center justify-center">
                 <AlertCircle className="w-6 h-6 text-amber-500" />

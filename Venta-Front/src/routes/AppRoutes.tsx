@@ -10,6 +10,7 @@ import CierreCajaScreen from '@/pages/POS/CierreCajaScreen';
 import PosAdminScreen from '@/pages/POS/PosAdminScreen';
 import HistorialVentasScreen from '@/pages/POS/HistorialVentasScreen';
 import CuentasCorrientesScreen from '@/pages/POS/CuentasCorrientesScreen';
+import SyncScreen from '@/pages/POS/SyncScreen';
 
 const AppRoutes: React.FC = () => {
   return (
@@ -67,6 +68,12 @@ const AppRoutes: React.FC = () => {
       <Route path="/cuentas-corrientes" element={
         <PrivateRoute requiredPermission="pos.cuentas_corrientes">
           <CuentasCorrientesScreen />
+        </PrivateRoute>
+      } />
+
+      <Route path="/sync" element={
+        <PrivateRoute requiredPermission="pos.vender">
+          <SyncScreen />
         </PrivateRoute>
       } />
     </Routes>

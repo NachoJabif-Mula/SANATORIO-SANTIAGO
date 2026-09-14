@@ -17,7 +17,7 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "9.0.19")
+                .HasAnnotation("ProductVersion", "9.0.20")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -43,6 +43,9 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                     b.Property<int>("OrdenVisual")
                         .HasColumnType("integer");
 
+                    b.Property<Guid>("SucursalId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -52,6 +55,8 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                         .HasFilter("\"IsActive\" = true");
 
                     b.HasIndex("OrdenVisual");
+
+                    b.HasIndex("SucursalId");
 
                     b.HasIndex("UpdatedAt");
 
@@ -324,6 +329,9 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                     b.Property<bool>("RequiereCocina")
                         .HasColumnType("boolean");
 
+                    b.Property<Guid>("SucursalId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -333,6 +341,8 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
 
                     b.HasIndex("IsActive")
                         .HasFilter("\"IsActive\" = true");
+
+                    b.HasIndex("SucursalId");
 
                     b.HasIndex("UpdatedAt");
 
@@ -450,6 +460,9 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
 
                     b.Property<DateTime?>("FechaInicioActividades")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("ImpresionSimulada")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
@@ -781,6 +794,339 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                     b.ToTable("MovimientosCuentaCorriente", (string)null);
                 });
 
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Fiscal.Comprobante", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Ambiente")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Cae")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("CaeVencimiento")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ComandaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CondicionIvaEmisor")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CondicionIvaReceptor")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CuitEmisor")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("FechaEmision")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("FechaUltimoIntento")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("ImporteExento")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("ImporteIva")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("ImporteNeto")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("ImporteNoGravado")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal>("ImporteTotal")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<int>("IntentosEmision")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<long>("NumeroComprobante")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("NumeroDocumentoReceptor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ObservacionesArca")
+                        .HasColumnType("text");
+
+                    b.Property<int>("PuntoVenta")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("QrPayload")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RazonSocialEmisor")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
+
+                    b.Property<string>("RazonSocialReceptor")
+                        .HasMaxLength(250)
+                        .HasColumnType("character varying(250)");
+
+                    b.Property<string>("RequestXml")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ResponseXml")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SucursalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SyncEstado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("TipoComprobante")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<int>("TipoDocumentoReceptor")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UltimoError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ComandaId");
+
+                    b.HasIndex("Estado");
+
+                    b.HasIndex("IsActive")
+                        .HasFilter("\"IsActive\" = true");
+
+                    b.HasIndex("SyncEstado");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.HasIndex("SucursalId", "FechaEmision");
+
+                    b.HasIndex("SucursalId", "PuntoVenta", "TipoComprobante", "NumeroComprobante")
+                        .IsUnique()
+                        .HasFilter("\"NumeroComprobante\" > 0");
+
+                    b.ToTable("Comprobantes", (string)null);
+                });
+
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Fiscal.ComprobanteAlicuota", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Alicuota")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<decimal>("BaseImponible")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("ComprobanteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("Importe")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive")
+                        .HasFilter("\"IsActive\" = true");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.HasIndex("ComprobanteId", "Alicuota")
+                        .IsUnique();
+
+                    b.ToTable("ComprobanteAlicuotas", (string)null);
+                });
+
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Fiscal.ConfiguracionFiscalSucursal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Ambiente")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("CertificadoCargadoEn")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("CertificadoCifrado")
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("CertificadoNombreArchivo")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("CertificadoPasswordCifrada")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CertificadoSubject")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("CertificadoThumbprint")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("CertificadoVence")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("ClavePrivadaCifrada")
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CsrGeneradoEn")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CsrSubject")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<Guid>("SucursalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UltimaValidacion")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UltimaValidacionMensaje")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("UltimaValidacionOk")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive")
+                        .HasFilter("\"IsActive\" = true");
+
+                    b.HasIndex("SucursalId")
+                        .IsUnique();
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("ConfiguracionesFiscales", (string)null);
+                });
+
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Fiscal.TicketAccesoWsaa", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Ambiente")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiraEn")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("GeneradoEn")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<string>("Servicio")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Sign")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SucursalId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiraEn");
+
+                    b.HasIndex("IsActive")
+                        .HasFilter("\"IsActive\" = true");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.HasIndex("SucursalId", "Ambiente", "Servicio")
+                        .IsUnique();
+
+                    b.ToTable("TicketsAccesoWsaa", (string)null);
+                });
+
             modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Inventario.Insumo", b =>
                 {
                     b.Property<Guid>("Id")
@@ -962,6 +1308,59 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                     b.HasIndex("UpdatedAt");
 
                     b.ToTable("DispositivosActivacion", (string)null);
+                });
+
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Seguridad.SesionUsuario", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiraEn")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("Revocada")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UltimoUsoEn")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive")
+                        .HasFilter("\"IsActive\" = true");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("SesionesUsuario", (string)null);
                 });
 
             modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Transaccional.Caja", b =>
@@ -1349,7 +1748,9 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
             modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Transaccional.PrintJob", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ComprobanteId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
@@ -1357,7 +1758,11 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
 
                     b.Property<string>("Estado")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime?>("FechaProcesado")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("ImpresoraId")
                         .HasColumnType("uuid");
@@ -1366,7 +1771,9 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                         .HasColumnType("integer");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("PayloadJson")
                         .IsRequired()
@@ -1378,20 +1785,41 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                     b.Property<Guid>("SucursalId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("SyncEstado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("TipoDocumento")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("UltimoError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ComprobanteId");
+
+                    b.HasIndex("Estado");
+
                     b.HasIndex("ImpresoraId");
 
-                    b.HasIndex("SucursalId");
+                    b.HasIndex("IsActive")
+                        .HasFilter("\"IsActive\" = true");
 
-                    b.ToTable("PrintJobs");
+                    b.HasIndex("SyncEstado");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.HasIndex("SucursalId", "CreatedAt");
+
+                    b.ToTable("PrintJobs", (string)null);
                 });
 
             modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Transaccional.TurnoCaja", b =>
@@ -1463,6 +1891,17 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                     b.ToTable("TurnosCaja", (string)null);
                 });
 
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Catalogo.Categoria", b =>
+                {
+                    b.HasOne("BaresFamilia.Core.Models.Entities.Catalogo.Sucursal", "Sucursal")
+                        .WithMany("Categorias")
+                        .HasForeignKey("SucursalId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Sucursal");
+                });
+
             modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Catalogo.ConfiguracionPos", b =>
                 {
                     b.HasOne("BaresFamilia.Core.Models.Entities.Catalogo.Sucursal", "Sucursal")
@@ -1523,7 +1962,15 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("BaresFamilia.Core.Models.Entities.Catalogo.Sucursal", "Sucursal")
+                        .WithMany("Productos")
+                        .HasForeignKey("SucursalId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("Categoria");
+
+                    b.Navigation("Sucursal");
                 });
 
             modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Catalogo.ProductoPrecio", b =>
@@ -1601,6 +2048,57 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                     b.Navigation("CuentaCorriente");
                 });
 
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Fiscal.Comprobante", b =>
+                {
+                    b.HasOne("BaresFamilia.Core.Models.Entities.Transaccional.Comanda", "Comanda")
+                        .WithMany()
+                        .HasForeignKey("ComandaId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("BaresFamilia.Core.Models.Entities.Catalogo.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("SucursalId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Comanda");
+
+                    b.Navigation("Sucursal");
+                });
+
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Fiscal.ComprobanteAlicuota", b =>
+                {
+                    b.HasOne("BaresFamilia.Core.Models.Entities.Fiscal.Comprobante", "Comprobante")
+                        .WithMany("Alicuotas")
+                        .HasForeignKey("ComprobanteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Comprobante");
+                });
+
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Fiscal.ConfiguracionFiscalSucursal", b =>
+                {
+                    b.HasOne("BaresFamilia.Core.Models.Entities.Catalogo.Sucursal", "Sucursal")
+                        .WithOne("ConfiguracionFiscal")
+                        .HasForeignKey("BaresFamilia.Core.Models.Entities.Fiscal.ConfiguracionFiscalSucursal", "SucursalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Sucursal");
+                });
+
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Fiscal.TicketAccesoWsaa", b =>
+                {
+                    b.HasOne("BaresFamilia.Core.Models.Entities.Catalogo.Sucursal", "Sucursal")
+                        .WithMany()
+                        .HasForeignKey("SucursalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Sucursal");
+                });
+
             modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Inventario.Receta", b =>
                 {
                     b.HasOne("BaresFamilia.Core.Models.Entities.Inventario.Insumo", "Insumo")
@@ -1648,6 +2146,17 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                         .IsRequired();
 
                     b.Navigation("Sucursal");
+                });
+
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Seguridad.SesionUsuario", b =>
+                {
+                    b.HasOne("BaresFamilia.Core.Models.Entities.Catalogo.Usuario", "Usuario")
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Usuario");
                 });
 
             modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Transaccional.Caja", b =>
@@ -1779,17 +2288,24 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
 
             modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Transaccional.PrintJob", b =>
                 {
+                    b.HasOne("BaresFamilia.Core.Models.Entities.Fiscal.Comprobante", "Comprobante")
+                        .WithMany()
+                        .HasForeignKey("ComprobanteId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("BaresFamilia.Core.Models.Entities.Catalogo.Impresora", "Impresora")
                         .WithMany()
                         .HasForeignKey("ImpresoraId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("BaresFamilia.Core.Models.Entities.Catalogo.Sucursal", "Sucursal")
                         .WithMany()
                         .HasForeignKey("SucursalId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Comprobante");
 
                     b.Navigation("Impresora");
 
@@ -1853,6 +2369,10 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                 {
                     b.Navigation("Cajas");
 
+                    b.Navigation("Categorias");
+
+                    b.Navigation("ConfiguracionFiscal");
+
                     b.Navigation("ConfiguracionesPos");
 
                     b.Navigation("Impresoras");
@@ -1860,6 +2380,8 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
                     b.Navigation("Mesas");
 
                     b.Navigation("ProductoPrecios");
+
+                    b.Navigation("Productos");
 
                     b.Navigation("StockSucursales");
 
@@ -1888,6 +2410,11 @@ namespace BaresFamilia.Infrastructure.Migrations.Nube
             modelBuilder.Entity("BaresFamilia.Core.Models.Entities.CuentasCorrientes.Cliente", b =>
                 {
                     b.Navigation("CuentaCorriente");
+                });
+
+            modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Fiscal.Comprobante", b =>
+                {
+                    b.Navigation("Alicuotas");
                 });
 
             modelBuilder.Entity("BaresFamilia.Core.Models.Entities.Inventario.Insumo", b =>

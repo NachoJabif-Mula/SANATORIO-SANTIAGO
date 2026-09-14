@@ -1,5 +1,6 @@
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Entities.CuentasCorrientes;
+using BaresFamilia.Core.Models.Entities.Fiscal;
 using BaresFamilia.Core.Models.Entities.Inventario;
 using BaresFamilia.Core.Models.Entities.Seguridad;
 using BaresFamilia.Core.Models.Entities.Transaccional;
@@ -39,6 +40,7 @@ public class NubeContext : DbContext
 
     // Seguridad
     public DbSet<DispositivoActivacion> DispositivosActivacion => Set<DispositivoActivacion>();
+    public DbSet<SesionUsuario> SesionesUsuario => Set<SesionUsuario>();
 
     // Inventario
     public DbSet<Insumo> Insumos => Set<Insumo>();
@@ -54,9 +56,16 @@ public class NubeContext : DbContext
     public DbSet<TipoTicket> TiposTicket => Set<TipoTicket>();
     public DbSet<ImpresoraTicketTipo> ImpresoraTicketTipos => Set<ImpresoraTicketTipo>();
 
+    // Facturación Electrónica (ARCA)
+    public DbSet<ConfiguracionFiscalSucursal> ConfiguracionesFiscales => Set<ConfiguracionFiscalSucursal>();
+    public DbSet<TicketAccesoWsaa> TicketsAccesoWsaa => Set<TicketAccesoWsaa>();
+    public DbSet<Comprobante> Comprobantes => Set<Comprobante>();
+    public DbSet<ComprobanteAlicuota> ComprobanteAlicuotas => Set<ComprobanteAlicuota>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         SharedModelConfiguration.ConfigureModel(modelBuilder);
+        SharedModelConfiguration.ConfigureNubeOnlyModel(modelBuilder);
     }
 }

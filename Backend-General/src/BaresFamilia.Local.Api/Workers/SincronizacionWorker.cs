@@ -1,13 +1,15 @@
 using System.Diagnostics;
 using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
-using BaresFamilia.Core.Models.Enums;
+using System.Text;
+using BaresFamilia.Core.Models.Contratos.Seguridad;
+using BaresFamilia.Core.Models.Contratos.Sincronizacion;
+using BaresFamilia.Core.Models.Dtos.Sincronizacion;
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Entities.CuentasCorrientes;
 using BaresFamilia.Core.Models.Entities.Transaccional;
-using BaresFamilia.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using BaresFamilia.Core.Models.Enums;
+using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -21,7 +23,7 @@ namespace BaresFamilia.Local.Api.Workers;
 /// con SyncEstado == Pendiente y los envía a la API Nube vía HTTP POST
 /// con el JWT M2M en los headers.
 /// </summary>
-public class SincronizacionWorker : BackgroundService
+public class SincronizacionWorker : BackgroundService, IMotorSincronizacionLocal
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -99,7 +101,11 @@ public class SincronizacionWorker : BackgroundService
     /// </summary>
     public int ObtenerIntervaloActual() => (int)_intervalo.TotalSeconds;
 
-    public Task<bool> TriggerManualSyncAsync(CancellationToken ct)
+    /// <summary>
+    /// Dispara una sincronización fuera de ciclo. No se espera a que termine: el
+    /// endpoint responde en cuanto queda encolada.
+    /// </summary>
+    public Task<bool> DispararSincronizacionManualAsync(CancellationToken ct = default)
     {
         if (_isSyncing)
         {
@@ -121,6 +127,10 @@ public class SincronizacionWorker : BackgroundService
         return Task.FromResult(true);
     }
 
+    /// <inheritdoc />
+    public IReadOnlyList<RegistroSincronizacionLocal> GetRegistrosRecientes()
+        => LocalSyncLogStore.GetLogs();
+
     private async Task TriggerSyncInternalAsync(bool forcePull, CancellationToken ct)
     {
         if (!await _syncSemaphore.WaitAsync(0, ct))
@@ -133,8 +143,8 @@ public class SincronizacionWorker : BackgroundService
         try
         {
             using var scope = _scopeFactory.CreateScope();
-            var context = scope.ServiceProvider.GetRequiredService<LocalContext>();
-            await ProcesarSincronizacionConOpcionesAsync(context, forcePull, ct);
+            var repositorio = scope.ServiceProvider.GetRequiredService<ISincronizacionLocalRepository>();
+            await ProcesarSincronizacionConOpcionesAsync(repositorio, forcePull, ct);
         }
         catch (Exception ex)
         {
@@ -196,7 +206,7 @@ public class SincronizacionWorker : BackgroundService
     private async Task<bool> CheckForceSyncRequestedAsync(CancellationToken ct)
     {
         using var scope = _scopeFactory.CreateScope();
-        var context = scope.ServiceProvider.GetRequiredService<LocalContext>();
+        var repositorio = scope.ServiceProvider.GetRequiredService<ISincronizacionLocalRepository>();
         
         string? jwtToken = null;
         Guid? sucursalId = null;
@@ -204,10 +214,10 @@ public class SincronizacionWorker : BackgroundService
 
         try
         {
-            var dbAct = await context.DispositivosActivacion.FirstOrDefaultAsync(d => d.Activado, ct);
+            var dbAct = await repositorio.GetActivacionVigenteAsync(ct);
             if (dbAct != null && !string.IsNullOrWhiteSpace(dbAct.TokenHash))
             {
-                var data = JsonSerializer.Deserialize<SyncActivationData>(dbAct.TokenHash, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var data = JsonSerializer.Deserialize<DatosActivacion>(dbAct.TokenHash, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 if (data != null && !string.IsNullOrWhiteSpace(data.Token))
                 {
                     jwtToken = data.Token;
@@ -259,7 +269,7 @@ public class SincronizacionWorker : BackgroundService
         return false;
     }
 
-    private async Task ProcesarSincronizacionConOpcionesAsync(LocalContext context, bool forcePull, CancellationToken ct)
+    private async Task ProcesarSincronizacionConOpcionesAsync(ISincronizacionLocalRepository repositorio, bool forcePull, CancellationToken ct)
     {
         // ── Obtener datos de activación desde la base de datos local ──
         string? jwtToken = null;
@@ -269,10 +279,10 @@ public class SincronizacionWorker : BackgroundService
 
         try
         {
-            var dbAct = await context.DispositivosActivacion.FirstOrDefaultAsync(d => d.Activado, ct);
+            var dbAct = await repositorio.GetActivacionVigenteAsync(ct);
             if (dbAct != null && !string.IsNullOrWhiteSpace(dbAct.TokenHash))
             {
-                var data = JsonSerializer.Deserialize<SyncActivationData>(dbAct.TokenHash, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var data = JsonSerializer.Deserialize<DatosActivacion>(dbAct.TokenHash, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 if (data != null && !string.IsNullOrWhiteSpace(data.Token))
                 {
                     jwtToken = data.Token;
@@ -357,9 +367,7 @@ public class SincronizacionWorker : BackgroundService
                             // Limpiar base de datos local
                             try
                             {
-                                var dbActs = await context.DispositivosActivacion.ToListAsync(ct);
-                                context.DispositivosActivacion.RemoveRange(dbActs);
-                                await context.SaveChangesAsync(ct);
+                                await repositorio.EliminarTodasLasActivacionesAsync(ct);
                             }
                             catch (Exception dbEx)
                             {
@@ -377,7 +385,7 @@ public class SincronizacionWorker : BackgroundService
             }
 
             // ── Asegurar sucursal local ──
-            var sucursalExiste = await context.Sucursales.AnyAsync(s => s.Id == sucursalId.Value, ct);
+            var sucursalExiste = await repositorio.ExisteSucursalAsync(sucursalId.Value, ct);
             if (!sucursalExiste)
             {
                 var nuevaSucursal = new Sucursal
@@ -389,13 +397,13 @@ public class SincronizacionWorker : BackgroundService
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
-                context.Sucursales.Add(nuevaSucursal);
-                await context.SaveChangesAsync(ct);
+                repositorio.Agregar(nuevaSucursal);
+                await repositorio.GuardarCambiosAsync(ct);
                 _logger.LogInformation("✅ Sucursal '{Nombre}' creada localmente (integridad referencial).", sucursalNombre);
             }
             else
             {
-                var sObj = await context.Sucursales.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sucursalId.Value, ct);
+                var sObj = await repositorio.GetSucursalSinSeguimientoAsync(sucursalId.Value, ct);
                 if (sObj != null)
                 {
                     sucursalNombre = sObj.Nombre;
@@ -409,45 +417,24 @@ public class SincronizacionWorker : BackgroundService
             // "cerradas"), MÁS cualquier comanda que aún esté Abierta pero tenga algún
             // ítem anulado individualmente — si no la incluimos aquí, esa anulación
             // (que vive como estado en el propio ComandaItem) nunca llega a la Nube.
-            var comandasPendientes = await context.Comandas
-                .Where(c => c.IsActive && c.SyncEstado == SyncEstado.Pendiente &&
-                    (c.Estado == ComandaEstado.Cobrada || c.Estado == ComandaEstado.Anulada
-                     || c.Items.Any(i => i.Cancelado)))
-                .Include(c => c.Items)
-                .ToListAsync(ct);
+            var comandasPendientes = await repositorio.GetComandasPendientesAsync(ct);
 
-            var pagosPendientes = await context.Pagos
-                .Include(p => p.Comanda)
-                .Where(p => p.SyncEstado == SyncEstado.Pendiente && p.Comanda.Estado == ComandaEstado.Cobrada && p.IsActive)
-                .ToListAsync(ct);
+            var pagosPendientes = await repositorio.GetPagosPendientesAsync(ct);
 
-            var movimientosPendientes = await context.MovimientosCaja
-                .Where(m => m.SyncEstado == SyncEstado.Pendiente && m.IsActive)
-                .ToListAsync(ct);
+            var movimientosPendientes = await repositorio.GetMovimientosCajaPendientesAsync(ct);
 
-            var cierresPendientes = await context.CierresDiarios
-                .Where(c => c.SyncEstado == SyncEstado.Pendiente && c.IsActive)
-                .ToListAsync(ct);
+            var cierresPendientes = await repositorio.GetCierresDiariosPendientesAsync(ct);
 
-            var clientesPendientes = await context.Clientes
-                .Where(c => c.SyncEstado == SyncEstado.Pendiente && c.IsActive)
-                .ToListAsync(ct);
+            var clientesPendientes = await repositorio.GetClientesPendientesAsync(ct);
 
-            var movimientosCtaCtePendientes = await context.Set<MovimientoCuentaCorriente>()
-                .Include(m => m.CuentaCorriente)
-                .Where(m => m.SyncEstado == SyncEstado.Pendiente && m.IsActive)
-                .ToListAsync(ct);
+            var movimientosCtaCtePendientes = await repositorio.GetMovimientosCuentaCorrientePendientesAsync(ct);
 
-            var turnosCajaPendientes = await context.TurnosCaja
-                .Where(t => t.SyncEstado == SyncEstado.Pendiente && t.IsActive)
-                .ToListAsync(ct);
+            var turnosCajaPendientes = await repositorio.GetTurnosCajaPendientesAsync(ct);
 
             // La Caja real de la sucursal nunca se había sincronizado: la Nube fabricaba una
             // "Caja Sincronizada Principal" propia con otro Id, por lo que el TurnoCaja real
             // nunca podía enlazar por FK. Sincronizarla primero resuelve eso de raíz.
-            var cajasPendientes = await context.Cajas
-                .Where(c => c.SyncEstado == SyncEstado.Pendiente && c.IsActive)
-                .ToListAsync(ct);
+            var cajasPendientes = await repositorio.GetCajasPendientesAsync(ct);
 
             var totalPendientes = comandasPendientes.Count + pagosPendientes.Count + movimientosPendientes.Count + cierresPendientes.Count + clientesPendientes.Count + movimientosCtaCtePendientes.Count + turnosCajaPendientes.Count + cajasPendientes.Count;
 
@@ -466,10 +453,10 @@ public class SincronizacionWorker : BackgroundService
 
                 LocalSyncLogStore.AddLog("PUSH", $"📤 PUSH: Subiendo {totalPendientes} registros locales pendientes (Comandas: {comandasPendientes.Count}, Pagos: {pagosPendientes.Count}, Egresos: {movimientosPendientes.Count}, Cierres: {cierresPendientes.Count}, Clientes: {clientesPendientes.Count}, Mov. Cta. Cte.: {movimientosCtaCtePendientes.Count}).", true);
 
-                var payload = new SyncPayload
+                var payload = new SyncPayloadDto
                 {
                     Timestamp = DateTime.UtcNow,
-                    Comandas = comandasPendientes.Select(c => new SyncComanda
+                    Comandas = comandasPendientes.Select(c => new SyncComandaDto
                     {
                         Id = c.Id,
                         TipoVentaId = c.TipoVentaId,
@@ -484,7 +471,7 @@ public class SincronizacionWorker : BackgroundService
                         FechaContable = c.FechaContable ?? DateTime.UtcNow,
                         Turno = c.Turno ?? "AM",
                         CreatedAt = c.CreatedAt,
-                        Items = c.Items.Select(i => new SyncComandaItem
+                        Items = c.Items.Select(i => new SyncComandaItemDto
                         {
                             Id = i.Id,
                             ProductoId = i.ProductoId,
@@ -497,7 +484,7 @@ public class SincronizacionWorker : BackgroundService
                             FechaAnulacion = i.FechaAnulacion
                         }).ToList()
                     }).ToList(),
-                    Pagos = pagosPendientes.Select(p => new SyncPago
+                    Pagos = pagosPendientes.Select(p => new SyncPagoDto
                     {
                         Id = p.Id,
                         ComandaId = p.ComandaId,
@@ -506,7 +493,7 @@ public class SincronizacionWorker : BackgroundService
                         Monto = p.Monto,
                         CreatedAt = p.CreatedAt
                     }).ToList(),
-                    Movimientos = movimientosPendientes.Select(m => new SyncMovimiento
+                    Movimientos = movimientosPendientes.Select(m => new SyncMovimientoDto
                     {
                         Id = m.Id,
                         TurnoCajaId = m.TurnoCajaId,
@@ -515,7 +502,7 @@ public class SincronizacionWorker : BackgroundService
                         Concepto = m.Concepto,
                         CreatedAt = m.CreatedAt
                     }).ToList(),
-                    CierresDiarios = cierresPendientes.Select(c => new SyncCierreDiario
+                    CierresDiarios = cierresPendientes.Select(c => new SyncCierreDiarioDto
                     {
                         Id = c.Id,
                         CajaId = c.CajaId,
@@ -531,14 +518,14 @@ public class SincronizacionWorker : BackgroundService
                     // Los clientes altados en el POS son locales: a la Nube solo le llega el nombre
                     // (necesario para el reporte de Cuentas Corrientes). Teléfono/Email/Límite de
                     // Crédito quedan exclusivamente en la sucursal que los cargó.
-                    Clientes = clientesPendientes.Select(c => new SyncCliente
+                    Clientes = clientesPendientes.Select(c => new SyncClienteDto
                     {
                         Id = c.Id,
                         Nombre = c.Nombre,
                         Apellido = c.Apellido,
                         CreatedAt = c.CreatedAt
                     }).ToList(),
-                    MovimientosCuentaCorriente = movimientosCtaCtePendientes.Select(m => new SyncMovimientoCuentaCorriente
+                    MovimientosCuentaCorriente = movimientosCtaCtePendientes.Select(m => new SyncMovimientoCuentaCorrienteDto
                     {
                         Id = m.Id,
                         ClienteId = m.CuentaCorriente.ClienteId,
@@ -548,7 +535,7 @@ public class SincronizacionWorker : BackgroundService
                         Detalle = m.Detalle,
                         CreatedAt = m.CreatedAt
                     }).ToList(),
-                    TurnosCaja = turnosCajaPendientes.Select(t => new SyncTurnoCaja
+                    TurnosCaja = turnosCajaPendientes.Select(t => new SyncTurnoCajaDto
                     {
                         Id = t.Id,
                         CajaId = t.CajaId,
@@ -560,7 +547,7 @@ public class SincronizacionWorker : BackgroundService
                         FondoInicial = t.FondoInicial,
                         DiferenciaArqueo = t.DiferenciaArqueo
                     }).ToList(),
-                    Cajas = cajasPendientes.Select(c => new SyncCaja
+                    Cajas = cajasPendientes.Select(c => new SyncCajaDto
                     {
                         Id = c.Id,
                         Nombre = c.Nombre,
@@ -581,7 +568,7 @@ public class SincronizacionWorker : BackgroundService
                     foreach (var t in turnosCajaPendientes) { t.SyncEstado = SyncEstado.Sincronizado; t.UpdatedAt = DateTime.UtcNow; }
                     foreach (var c in cajasPendientes) { c.SyncEstado = SyncEstado.Sincronizado; c.UpdatedAt = DateTime.UtcNow; }
 
-                    await context.SaveChangesAsync(ct);
+                    await repositorio.GuardarCambiosAsync(ct);
                     _logger.LogInformation("📤 [PUSH] ✅ Sincronización exitosa. Los {Total} registros locales ahora están en la Nube.", totalPendientes);
                     LocalSyncLogStore.AddLog("PUSH", $"📤 PUSH: ✅ Sincronizados {totalPendientes} registros con éxito.", true);
                     await EnviarLogANubeAsync(sucursalId.Value, sucursalNombre, "PUSH", $"📤 PUSH ✅ Sincronizados {totalPendientes} registros locales con éxito (Comandas: {comandasPendientes.Count}, Pagos: {pagosPendientes.Count}, Movs: {movimientosPendientes.Count}, Cierres: {cierresPendientes.Count}).", true, jwtToken, ct);
@@ -610,16 +597,16 @@ public class SincronizacionWorker : BackgroundService
 
             // ── Clientes: se sincroniza en cada ciclo (no solo en pull forzado), para que las altas
             // hechas desde el Backoffice aparezcan en el POS sin depender de una sync manual ──
-            await SincronizarClientesAsync(context, jwtToken, ct);
+            await SincronizarClientesAsync(repositorio, jwtToken, ct);
 
             // ══════════════════════════════════
             // 2. PULL — Descargar catálogos de Nube
             // ══════════════════════════════════
-            bool noHayUsuarios = !await context.Usuarios.AnyAsync(ct);
+            bool noHayUsuarios = !await repositorio.HayAlgunoAsync<Usuario>(ct);
             if (forcePull || forceFromNube || noHayUsuarios)
             {
                 LocalSyncLogStore.AddLog("PULL", "📥 PULL: Iniciando descarga de catálogos desde la Nube...", true);
-                await EjecutarPullSincronizacionAsync(context, jwtToken, sucursalId.Value, sucursalNombre, ct);
+                await EjecutarPullSincronizacionAsync(repositorio, jwtToken, sucursalId.Value, sucursalNombre, ct);
             }
             else
             {
@@ -635,7 +622,7 @@ public class SincronizacionWorker : BackgroundService
         }
     }
 
-    private async Task EjecutarPullSincronizacionAsync(LocalContext context, string jwtToken, Guid sucursalId, string sucursalNombre, CancellationToken ct)
+    private async Task EjecutarPullSincronizacionAsync(ISincronizacionLocalRepository repositorio, string jwtToken, Guid sucursalId, string sucursalNombre, CancellationToken ct)
     {
         var baseUrl = _configuration["NubeApi:BaseUrl"];
         if (string.IsNullOrEmpty(baseUrl)) return;
@@ -654,6 +641,89 @@ public class SincronizacionWorker : BackgroundService
             var client = _httpClientFactory.CreateClient("NubeApi");
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
 
+            // A.0 PULL Sucursal — trae el flag ImpresionSimulada (modo simulador de tickets/AFIP)
+            // configurado desde el backoffice, para que el motor de impresión local lo respete.
+            try
+            {
+                var sucursalUrl = $"{baseUrl.TrimEnd('/')}/api/sucursal";
+                var sucursalResponse = await client.GetAsync(sucursalUrl, ct);
+                if (sucursalResponse.IsSuccessStatusCode)
+                {
+                    var json = await sucursalResponse.Content.ReadAsStringAsync(ct);
+                    var pulledSucursales = JsonSerializer.Deserialize<List<SyncSucursalDto>>(json, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                    var pulledSucursal = pulledSucursales?.FirstOrDefault(s => s.Id == sucursalId);
+                    if (pulledSucursal != null)
+                    {
+                        var sucursalLocal = await repositorio.GetSucursalAsync(sucursalId, ct);
+                        if (sucursalLocal != null && sucursalLocal.ImpresionSimulada != pulledSucursal.ImpresionSimulada)
+                        {
+                            sucursalLocal.ImpresionSimulada = pulledSucursal.ImpresionSimulada;
+                            sucursalLocal.UpdatedAt = DateTime.UtcNow;
+                        }
+                    }
+                }
+                else
+                {
+                    errores.Add($"Sucursal: HTTP {(int)sucursalResponse.StatusCode}");
+                }
+            }
+            catch (Exception ex)
+            {
+                errores.Add($"Sucursal: {ex.Message}");
+            }
+
+            // A.0.b PULL TiposTicket — templates de comanda/factura usados por el motor de
+            // impresión local (ImpresoraService). Sin esto, ImprimirTicketAsync no encuentra
+            // el tipo de ticket y no imprime (ni siquiera en modo simulador).
+            try
+            {
+                var tipoTicketUrl = $"{baseUrl.TrimEnd('/')}/api/tipo-ticket";
+                var tipoTicketResponse = await client.GetAsync(tipoTicketUrl, ct);
+                if (tipoTicketResponse.IsSuccessStatusCode)
+                {
+                    var json = await tipoTicketResponse.Content.ReadAsStringAsync(ct);
+                    var pulledTipos = JsonSerializer.Deserialize<List<SyncTipoTicketDto>>(json, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                    if (pulledTipos != null)
+                    {
+                        var existingTipos = await repositorio.GetTodosAsync<TipoTicket>(ct);
+                        var existingMap = existingTipos.ToDictionary(t => t.Id);
+
+                        foreach (var pulled in pulledTipos)
+                        {
+                            if (existingMap.TryGetValue(pulled.Id, out var existing))
+                            {
+                                existing.Codigo = pulled.Codigo;
+                                existing.Nombre = pulled.Nombre;
+                                existing.TemplateContenido = pulled.TemplateContenido;
+                                existing.IsActive = pulled.IsActive;
+                                existing.UpdatedAt = DateTime.UtcNow;
+                            }
+                            else
+                            {
+                                repositorio.Agregar(new TipoTicket
+                                {
+                                    Id = pulled.Id,
+                                    Codigo = pulled.Codigo,
+                                    Nombre = pulled.Nombre,
+                                    TemplateContenido = pulled.TemplateContenido,
+                                    IsActive = pulled.IsActive,
+                                    CreatedAt = pulled.CreatedAt,
+                                    UpdatedAt = pulled.UpdatedAt
+                                });
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    errores.Add($"TipoTicket: HTTP {(int)tipoTicketResponse.StatusCode}");
+                }
+            }
+            catch (Exception ex)
+            {
+                errores.Add($"TipoTicket: {ex.Message}");
+            }
+
             // A. PULL Configuraciones POS
             try
             {
@@ -666,7 +736,7 @@ public class SincronizacionWorker : BackgroundService
                     if (pulledConfigs != null)
                     {
                         configCount = pulledConfigs.Count;
-                        var existingConfigs = await context.ConfiguracionesPos.ToListAsync(ct);
+                        var existingConfigs = await repositorio.GetTodosAsync<ConfiguracionPos>(ct);
                         var existingMap = existingConfigs.ToDictionary(c => c.Id);
 
                         foreach (var pulled in pulledConfigs)
@@ -691,7 +761,7 @@ public class SincronizacionWorker : BackgroundService
                                     CreatedAt = pulled.CreatedAt,
                                     UpdatedAt = pulled.UpdatedAt
                                 };
-                                context.ConfiguracionesPos.Add(newConfig);
+                                repositorio.Agregar(newConfig);
                             }
                         }
                     }
@@ -718,7 +788,7 @@ public class SincronizacionWorker : BackgroundService
                     if (pulledMesas != null)
                     {
                         mesaCount = pulledMesas.Count;
-                        var existingMesas = await context.Mesas.ToListAsync(ct);
+                        var existingMesas = await repositorio.GetTodosAsync<Mesa>(ct);
                         var existingMap = existingMesas.ToDictionary(m => m.Id);
 
                         foreach (var pulled in pulledMesas)
@@ -749,7 +819,7 @@ public class SincronizacionWorker : BackgroundService
                                     CreatedAt = pulled.CreatedAt,
                                     UpdatedAt = pulled.UpdatedAt
                                 };
-                                context.Mesas.Add(newMesa);
+                                repositorio.Agregar(newMesa);
                             }
                         }
                     }
@@ -776,7 +846,7 @@ public class SincronizacionWorker : BackgroundService
                     if (pulledRoles != null)
                     {
                         rolCount = pulledRoles.Count;
-                        var existingRoles = await context.Roles.ToListAsync(ct);
+                        var existingRoles = await repositorio.GetTodosAsync<Rol>(ct);
                         var existingMap = existingRoles.ToDictionary(r => r.Id);
 
                         foreach (var pulled in pulledRoles)
@@ -800,7 +870,7 @@ public class SincronizacionWorker : BackgroundService
                                     CreatedAt = pulled.CreatedAt,
                                     UpdatedAt = pulled.UpdatedAt
                                 };
-                                context.Roles.Add(newRol);
+                                repositorio.Agregar(newRol);
                             }
                         }
                     }
@@ -827,7 +897,7 @@ public class SincronizacionWorker : BackgroundService
                     if (pulledUsuarios != null)
                     {
                         usuarioCount = pulledUsuarios.Count;
-                        var existingUsuarios = await context.Usuarios.ToListAsync(ct);
+                        var existingUsuarios = await repositorio.GetTodosAsync<Usuario>(ct);
                         var existingMap = existingUsuarios.ToDictionary(u => u.Id);
 
                         foreach (var pulled in pulledUsuarios)
@@ -858,7 +928,7 @@ public class SincronizacionWorker : BackgroundService
                                     CreatedAt = pulled.CreatedAt,
                                     UpdatedAt = pulled.UpdatedAt
                                 };
-                                context.Usuarios.Add(newUsuario);
+                                repositorio.Agregar(newUsuario);
                             }
                         }
                     }
@@ -885,7 +955,7 @@ public class SincronizacionWorker : BackgroundService
                     if (pulledTvs != null)
                     {
                         tipoVentaCount = pulledTvs.Count;
-                        var existingTvs = await context.TiposVenta.ToListAsync(ct);
+                        var existingTvs = await repositorio.GetTodosAsync<TipoVenta>(ct);
                         var existingMap = existingTvs.ToDictionary(t => t.Id);
 
                         foreach (var pulled in pulledTvs)
@@ -909,7 +979,7 @@ public class SincronizacionWorker : BackgroundService
                                     CreatedAt = pulled.CreatedAt,
                                     UpdatedAt = pulled.UpdatedAt
                                 };
-                                context.TiposVenta.Add(newTv);
+                                repositorio.Agregar(newTv);
                             }
                         }
 
@@ -947,13 +1017,14 @@ public class SincronizacionWorker : BackgroundService
                     if (pulledCats != null)
                     {
                         categoriaCount = pulledCats.Count;
-                        var existingCats = await context.Categorias.ToListAsync(ct);
+                        var existingCats = await repositorio.GetTodosAsync<Categoria>(ct);
                         var existingMap = existingCats.ToDictionary(c => c.Id);
 
                         foreach (var pulled in pulledCats)
                         {
                             if (existingMap.TryGetValue(pulled.Id, out var existing))
                             {
+                                existing.SucursalId = pulled.SucursalId;
                                 existing.Nombre = pulled.Nombre;
                                 existing.OrdenVisual = pulled.OrdenVisual;
                                 existing.IsActive = pulled.IsActive;
@@ -965,13 +1036,14 @@ public class SincronizacionWorker : BackgroundService
                                 var newCat = new Categoria
                                 {
                                     Id = pulled.Id,
+                                    SucursalId = pulled.SucursalId,
                                     Nombre = pulled.Nombre,
                                     OrdenVisual = pulled.OrdenVisual,
                                     IsActive = pulled.IsActive,
                                     CreatedAt = pulled.CreatedAt,
                                     UpdatedAt = pulled.UpdatedAt
                                 };
-                                context.Categorias.Add(newCat);
+                                repositorio.Agregar(newCat);
                             }
                         }
 
@@ -1009,17 +1081,18 @@ public class SincronizacionWorker : BackgroundService
                     if (pulledProds != null)
                     {
                         productoCount = pulledProds.Count;
-                        var existingProds = await context.Productos.ToListAsync(ct);
+                        var existingProds = await repositorio.GetTodosAsync<Producto>(ct);
                         var existingMap = existingProds.ToDictionary(p => p.Id);
 
                         foreach (var pulled in pulledProds)
                         {
                             // Validar que la CategoriaId exista localmente para evitar error de FK.
-                            var categoriaExiste = await context.Categorias.AnyAsync(c => c.Id == pulled.CategoriaId, ct);
+                            var categoriaExiste = await repositorio.ExisteAsync<Categoria>(pulled.CategoriaId, ct);
                             if (!categoriaExiste) continue;
 
                             if (existingMap.TryGetValue(pulled.Id, out var existing))
                             {
+                                existing.SucursalId = pulled.SucursalId;
                                 existing.CategoriaId = pulled.CategoriaId;
                                 existing.Nombre = pulled.Nombre;
                                 existing.ColorUi = pulled.ColorUi;
@@ -1033,6 +1106,7 @@ public class SincronizacionWorker : BackgroundService
                                 var newProd = new Producto
                                 {
                                     Id = pulled.Id,
+                                    SucursalId = pulled.SucursalId,
                                     CategoriaId = pulled.CategoriaId,
                                     Nombre = pulled.Nombre,
                                     ColorUi = pulled.ColorUi,
@@ -1041,7 +1115,7 @@ public class SincronizacionWorker : BackgroundService
                                     CreatedAt = pulled.CreatedAt,
                                     UpdatedAt = pulled.UpdatedAt
                                 };
-                                context.Productos.Add(newProd);
+                                repositorio.Agregar(newProd);
                             }
                         }
 
@@ -1079,15 +1153,15 @@ public class SincronizacionWorker : BackgroundService
                     if (pulledPrecios != null)
                     {
                         precioCount = pulledPrecios.Count;
-                        var existingPrecios = await context.ProductoPrecios.ToListAsync(ct);
+                        var existingPrecios = await repositorio.GetTodosAsync<ProductoPrecio>(ct);
                         var existingMap = existingPrecios.ToDictionary(p => p.Id);
 
                         foreach (var pulled in pulledPrecios)
                         {
                             // Validar integridad referencial local
-                            var productoExiste = await context.Productos.AnyAsync(p => p.Id == pulled.ProductoId, ct);
-                            var sucursalExiste = await context.Sucursales.AnyAsync(s => s.Id == pulled.SucursalId, ct);
-                            var tipoVentaExiste = await context.TiposVenta.AnyAsync(t => t.Id == pulled.TipoVentaId, ct);
+                            var productoExiste = await repositorio.ExisteAsync<Producto>(pulled.ProductoId, ct);
+                            var sucursalExiste = await repositorio.ExisteAsync<Sucursal>(pulled.SucursalId, ct);
+                            var tipoVentaExiste = await repositorio.ExisteAsync<TipoVenta>(pulled.TipoVentaId, ct);
 
                             if (!productoExiste || !sucursalExiste || !tipoVentaExiste)
                                 continue;
@@ -1115,7 +1189,7 @@ public class SincronizacionWorker : BackgroundService
                                     CreatedAt = DateTime.UtcNow,
                                     UpdatedAt = DateTime.UtcNow
                                 };
-                                context.ProductoPrecios.Add(newPrecio);
+                                repositorio.Agregar(newPrecio);
                             }
                         }
 
@@ -1153,7 +1227,7 @@ public class SincronizacionWorker : BackgroundService
                     if (pulledMps != null)
                     {
                         metodoPagoCount = pulledMps.Count;
-                        var existingMps = await context.MetodosPago.ToListAsync(ct);
+                        var existingMps = await repositorio.GetTodosAsync<MetodoPago>(ct);
                         var existingMap = existingMps.ToDictionary(m => m.Id);
                         // Métodos sembrados independientemente en Local y Nube (p. ej. "Efectivo", "Cuenta Corriente")
                         // pueden tener Ids distintos aunque el Nombre coincida. Como el nombre es único, se
@@ -1189,7 +1263,7 @@ public class SincronizacionWorker : BackgroundService
                                     CreatedAt = DateTime.UtcNow,
                                     UpdatedAt = DateTime.UtcNow
                                 };
-                                context.MetodosPago.Add(newMp);
+                                repositorio.Agregar(newMp);
                                 touchedLocalIds.Add(newMp.Id);
                             }
                         }
@@ -1219,7 +1293,7 @@ public class SincronizacionWorker : BackgroundService
             // ejecutado en cada tick del worker (no solo en pull forzado), para que las altas hechas
             // desde el Backoffice aparezcan en el POS sin depender de una sincronización manual.
 
-            await context.SaveChangesAsync(ct);
+            await repositorio.GuardarCambiosAsync(ct);
             sw.Stop();
 
             // ── Log resumen del PULL ──
@@ -1283,7 +1357,7 @@ public class SincronizacionWorker : BackgroundService
     /// se pisan desde acá: son propiedad del lado que los cargó (POS o Backoffice) igual que el SaldoActual.
     /// Solo se actualizan Nombre/Apellido/IsActive para reflejar ediciones o bajas hechas en el Backoffice.
     /// </summary>
-    private async Task SincronizarClientesAsync(LocalContext context, string jwtToken, CancellationToken ct)
+    private async Task SincronizarClientesAsync(ISincronizacionLocalRepository repositorio, string jwtToken, CancellationToken ct)
     {
         var baseUrl = _configuration["NubeApi:BaseUrl"];
         if (string.IsNullOrEmpty(baseUrl)) return;
@@ -1298,10 +1372,10 @@ public class SincronizacionWorker : BackgroundService
             if (!clienteResponse.IsSuccessStatusCode) return;
 
             var json = await clienteResponse.Content.ReadAsStringAsync(ct);
-            var pulledClientes = JsonSerializer.Deserialize<List<SyncClienteDto>>(json, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            var pulledClientes = JsonSerializer.Deserialize<List<SyncClienteDescargaDto>>(json, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
             if (pulledClientes == null) return;
 
-            var existingClientes = await context.Clientes.ToListAsync(ct);
+            var existingClientes = await repositorio.GetTodosAsync<Cliente>(ct);
             var existingMap = existingClientes.ToDictionary(c => c.Id);
             var nuevos = 0;
 
@@ -1332,13 +1406,13 @@ public class SincronizacionWorker : BackgroundService
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow
                     };
-                    context.Clientes.Add(newCliente);
-                    await context.SaveChangesAsync(ct);
+                    repositorio.Agregar(newCliente);
+                    await repositorio.GuardarCambiosAsync(ct);
 
-                    var cuentaExiste = await context.CuentasCorrientes.AnyAsync(cc => cc.ClienteId == pulled.Id, ct);
+                    var cuentaExiste = await repositorio.ExisteCuentaCorrienteDeClienteAsync(pulled.Id, ct);
                     if (!cuentaExiste)
                     {
-                        context.CuentasCorrientes.Add(new CuentaCorriente
+                        repositorio.Agregar(new CuentaCorriente
                         {
                             ClienteId = pulled.Id,
                             SaldoActual = pulled.SaldoActual,
@@ -1346,7 +1420,7 @@ public class SincronizacionWorker : BackgroundService
                             UpdatedAt = DateTime.UtcNow,
                             IsActive = true
                         });
-                        await context.SaveChangesAsync(ct);
+                        await repositorio.GuardarCambiosAsync(ct);
                     }
                 }
             }
@@ -1362,7 +1436,7 @@ public class SincronizacionWorker : BackgroundService
                 }
             }
 
-            await context.SaveChangesAsync(ct);
+            await repositorio.GuardarCambiosAsync(ct);
 
             if (nuevos > 0)
             {
@@ -1400,7 +1474,7 @@ public class SincronizacionWorker : BackgroundService
         catch { }
     }
 
-    private async Task<(bool Exitoso, string? ErrorDetail)> EnviarANubeAsync(SyncPayload payload, string jwtToken, CancellationToken ct)
+    private async Task<(bool Exitoso, string? ErrorDetail)> EnviarANubeAsync(SyncPayloadDto payload, string jwtToken, CancellationToken ct)
     {
         var baseUrl = _configuration["NubeApi:BaseUrl"];
 
@@ -1469,255 +1543,4 @@ public class SincronizacionWorker : BackgroundService
             return (false, $"Error inesperado: {ex.Message}");
         }
     }
-}
-
-// ═══════════════════════════════════
-// DTOs de Sincronización
-// ═══════════════════════════════════
-
-public class SyncPayload
-{
-    public DateTime Timestamp { get; set; }
-    public List<SyncComanda> Comandas { get; set; } = [];
-    public List<SyncPago> Pagos { get; set; } = [];
-    public List<SyncMovimiento> Movimientos { get; set; } = [];
-    public List<SyncCierreDiario> CierresDiarios { get; set; } = [];
-    public List<SyncCliente> Clientes { get; set; } = [];
-    public List<SyncMovimientoCuentaCorriente> MovimientosCuentaCorriente { get; set; } = [];
-    public List<SyncTurnoCaja> TurnosCaja { get; set; } = [];
-    public List<SyncCaja> Cajas { get; set; } = [];
-}
-
-/// <summary>
-/// DTO de PUSH (Local → Nube) de la Caja real de la sucursal, para que los TurnoCaja
-/// reales puedan enlazar por FK contra la misma Caja que existe en el POS local
-/// (antes la Nube fabricaba su propia "Caja Sincronizada Principal" con otro Id).
-/// </summary>
-public class SyncCaja
-{
-    public Guid Id { get; set; }
-    public string Nombre { get; set; } = string.Empty;
-    public string TipoCaja { get; set; } = string.Empty;
-}
-
-/// <summary>
-/// DTO de PUSH (Local → Nube) del turno de caja real (apertura/cierre/fondo/arqueo),
-/// para que la Nube deje de fabricar turnos "stub" al recibir Pagos/Movimientos que
-/// los referencian por FK.
-/// </summary>
-public class SyncTurnoCaja
-{
-    public Guid Id { get; set; }
-    public Guid CajaId { get; set; }
-    public Guid UsuarioId { get; set; }
-    public DateTime FechaApertura { get; set; }
-    public DateTime? FechaCierre { get; set; }
-    public DateTime FechaContable { get; set; }
-    public string Turno { get; set; } = string.Empty;
-    public decimal FondoInicial { get; set; }
-    public decimal? DiferenciaArqueo { get; set; }
-}
-
-/// <summary>
-/// DTO de PUSH (Local → Nube) para clientes altados en el POS.
-/// Solo lleva el nombre: el resto de los datos de contacto son "solo del POS" y no se sincronizan.
-/// </summary>
-public class SyncCliente
-{
-    public Guid Id { get; set; }
-    public string Nombre { get; set; } = string.Empty;
-    public string Apellido { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
-}
-
-public class SyncMovimientoCuentaCorriente
-{
-    public Guid Id { get; set; }
-    public Guid ClienteId { get; set; }
-    public Guid? ComandaId { get; set; }
-    public string Tipo { get; set; } = string.Empty;
-    public decimal Monto { get; set; }
-    public string Detalle { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
-}
-
-public class SyncClienteDto
-{
-    public Guid Id { get; set; }
-    public string Nombre { get; set; } = string.Empty;
-    public string Apellido { get; set; } = string.Empty;
-    public string? Telefono { get; set; }
-    public string? Email { get; set; }
-    public decimal LimiteCredito { get; set; }
-    public decimal SaldoActual { get; set; }
-    public bool IsActive { get; set; }
-}
-
-public class SyncCierreDiario
-{
-    public Guid Id { get; set; }
-    public Guid CajaId { get; set; }
-    public DateTime Fecha { get; set; }
-    public Guid UsuarioCierreId { get; set; }
-    public decimal TotalVentas { get; set; }
-    public decimal TotalEgresos { get; set; }
-    public decimal TotalNeto { get; set; }
-    public string? ResumenJson { get; set; }
-    public string? Observaciones { get; set; }
-    public DateTime CreatedAt { get; set; }
-}
-
-public class SyncMetodoPagoDto
-{
-    public Guid Id { get; set; }
-    public string Nombre { get; set; } = string.Empty;
-    public decimal ComisionPorcentaje { get; set; }
-    public bool RequiereFacturaAfip { get; set; }
-    public bool EsCuentaCorriente { get; set; }
-    public bool IsActive { get; set; }
-}
-
-public class SyncComanda
-{
-    public Guid Id { get; set; }
-    public Guid TipoVentaId { get; set; }
-    public Guid? MesaId { get; set; }
-    public Guid UsuarioId { get; set; }
-    public string Estado { get; set; } = string.Empty;
-    public decimal Subtotal { get; set; }
-    public decimal Descuento { get; set; }
-    public decimal Total { get; set; }
-    public DateTime FechaContable { get; set; }
-    public string Turno { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
-    public List<SyncComandaItem> Items { get; set; } = [];
-}
-
-public class SyncComandaItem
-{
-    public Guid Id { get; set; }
-    public Guid ProductoId { get; set; }
-    public int Cantidad { get; set; }
-    public decimal PrecioUnitario { get; set; }
-    public string? Notas { get; set; }
-    public bool Cancelado { get; set; }
-    public string? MotivoAnulacion { get; set; }
-    public Guid? AnuladoPorUsuarioId { get; set; }
-    public DateTime? FechaAnulacion { get; set; }
-}
-
-public class SyncPago
-{
-    public Guid Id { get; set; }
-    public Guid ComandaId { get; set; }
-    public Guid TurnoCajaId { get; set; }
-    public Guid MetodoPagoId { get; set; }
-    public decimal Monto { get; set; }
-    public DateTime CreatedAt { get; set; }
-}
-
-public class SyncMovimiento
-{
-    public Guid Id { get; set; }
-    public Guid TurnoCajaId { get; set; }
-    public string Tipo { get; set; } = string.Empty;
-    public decimal Monto { get; set; }
-    public string Concepto { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; }
-}
-
-public class SyncConfigPosDto
-{
-    public Guid Id { get; set; }
-    public string Nombre { get; set; } = string.Empty;
-    public string ConfiguracionJson { get; set; } = string.Empty;
-    public bool IsActive { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-
-public class SyncMesaDto
-{
-    public Guid Id { get; set; }
-    public string Etiqueta { get; set; } = string.Empty;
-    public int Capacidad { get; set; }
-    public double PosX { get; set; }
-    public double PosY { get; set; }
-    public BaresFamilia.Core.Models.Enums.FormaMesa Forma { get; set; }
-    public bool IsActive { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-
-public class SyncRolDto
-{
-    public Guid Id { get; set; }
-    public string Nombre { get; set; } = string.Empty;
-    public List<string> Permisos { get; set; } = [];
-    public bool IsActive { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-
-public class SyncUsuarioDto
-{
-    public Guid Id { get; set; }
-    public Guid RolId { get; set; }
-    public Guid SucursalId { get; set; }
-    public string Nombre { get; set; } = string.Empty;
-    public string Email { get; set; } = string.Empty;
-    public string PinAcceso { get; set; } = string.Empty;
-    public bool IsActive { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-
-public class SyncActivationData
-{
-    public string Token { get; set; } = string.Empty;
-    public Guid SucursalId { get; set; }
-    public Guid DispositivoId { get; set; }
-    public string SucursalNombre { get; set; } = string.Empty;
-}
-
-public class SyncTipoVentaDto
-{
-    public Guid Id { get; set; }
-    public string Nombre { get; set; } = string.Empty;
-    public bool AplicaRecargo { get; set; }
-    public bool IsActive { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-
-public class SyncCategoriaDto
-{
-    public Guid Id { get; set; }
-    public string Nombre { get; set; } = string.Empty;
-    public int OrdenVisual { get; set; }
-    public bool IsActive { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-
-public class SyncProductoDto
-{
-    public Guid Id { get; set; }
-    public Guid CategoriaId { get; set; }
-    public string Nombre { get; set; } = string.Empty;
-    public string ColorUi { get; set; } = string.Empty;
-    public bool RequiereCocina { get; set; }
-    public bool IsActive { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-}
-
-public class SyncProductoPrecioDto
-{
-    public Guid Id { get; set; }
-    public Guid ProductoId { get; set; }
-    public Guid SucursalId { get; set; }
-    public Guid TipoVentaId { get; set; }
-    public decimal PrecioVenta { get; set; }
-    public bool IsActive { get; set; }
 }

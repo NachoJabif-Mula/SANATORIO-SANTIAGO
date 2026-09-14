@@ -1,6 +1,6 @@
-using BaresFamilia.Core.Models.Enums;
 using BaresFamilia.Core.Models.Entities.Inventario;
 using BaresFamilia.Core.Models.Entities.Transaccional;
+using BaresFamilia.Core.Models.Enums;
 
 namespace BaresFamilia.Core.Models.Entities.Catalogo;
 
@@ -9,6 +9,13 @@ namespace BaresFamilia.Core.Models.Entities.Catalogo;
 /// </summary>
 public class Producto : BaseEntity
 {
+    /// <summary>
+    /// Sucursal dueña de este producto: el catálogo (categorías y productos) es
+    /// propio de cada sucursal, no compartido globalmente. Debe coincidir con la
+    /// sucursal de <see cref="CategoriaId"/>.
+    /// </summary>
+    public Guid SucursalId { get; set; }
+
     public Guid CategoriaId { get; set; }
     public string Nombre { get; set; } = string.Empty;
 
@@ -29,6 +36,7 @@ public class Producto : BaseEntity
     public AlicuotaIva AlicuotaIva { get; set; } = AlicuotaIva.Iva21;
 
     // Navegación
+    public Sucursal Sucursal { get; set; } = null!;
     public Categoria Categoria { get; set; } = null!;
     public ICollection<ProductoPrecio> ProductoPrecios { get; set; } = [];
     public ICollection<ComandaItem> ComandaItems { get; set; } = [];

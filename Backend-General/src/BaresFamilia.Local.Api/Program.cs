@@ -1,8 +1,9 @@
+using BaresFamilia.Core.Models.Interfaces;
 using BaresFamilia.Infrastructure;
 using BaresFamilia.Infrastructure.Data;
 using BaresFamilia.Local.Api.Hubs;
+using BaresFamilia.Local.Api.Middleware;
 using BaresFamilia.Local.Api.Workers;
-using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -57,35 +58,14 @@ builder.Services.AddHttpClient("NubeApi", client =>
 // Motor Local-First: Sincronización en background cada 30 segundos
 builder.Services.AddSingleton<SincronizacionWorker>();
 builder.Services.AddHostedService<SincronizacionWorker>(sp => sp.GetRequiredService<SincronizacionWorker>());
+builder.Services.AddSingleton<IMotorSincronizacionLocal>(sp => sp.GetRequiredService<SincronizacionWorker>());
 
 var app = builder.Build();
 
 // ========================================
-// AUTO-MIGRATE: Crea/actualiza tablas al arrancar
+// AUTO-MIGRATE: la capa de Infrastructure prepara la base al arrancar
 // ========================================
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<LocalContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-
-    try
-    {
-        logger.LogInformation("Aplicando migraciones pendientes en la base de datos Local...");
-        context.Database.Migrate();
-        logger.LogInformation("Migraciones aplicadas correctamente.");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error al aplicar migraciones. Intentando EnsureCreated como fallback...");
-        context.Database.EnsureCreated();
-        logger.LogWarning("Base de datos creada con EnsureCreated (sin historial de migraciones).");
-    }
-
-    // NOTA: Los Métodos de Pago (incluida "Cuenta Corriente") son catálogo maestro
-    // de la Nube y llegan a Local únicamente vía sincronización (SincronizacionWorker).
-    // Sembrarlos también acá generaba un duplicado con Id distinto al de la Nube,
-    // lo que rompía el pull por violar la restricción única de "Nombre".
-}
+InicializadorLocal.Inicializar(app.Services);
 
 // ========================================
 // PIPELINE HTTP & SIGNALR
@@ -96,6 +76,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+// Traduce las excepciones de dominio (regla de negocio / recurso inexistente)
+// al código HTTP correspondiente antes de que lleguen al cliente.
+app.UseManejadorExcepciones();
 
 app.UseAuthorization();
 app.UseCors();

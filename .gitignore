@@ -49,3 +49,8 @@ CUENTA_CORRIENTE_IMPLEMENTACION.md
 DBEAVER_SETUP.md
 DEVELOPMENT.md
 CLAUDE_CODE_PROMPT.md
+# Fiscal: anillo de claves de Data Protection y certificados ARCA
+DataProtectionKeys/
+**/DataProtectionKeys/
+*.pfx
+*.p12

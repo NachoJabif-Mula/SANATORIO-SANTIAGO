@@ -1,35 +1,25 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using BaresFamilia.Core.Models.Entities.Transaccional;
-using BaresFamilia.Core.Models.Enums;
-using BaresFamilia.Infrastructure.Data;
+using BaresFamilia.Core.Models.Interfaces;
 using BaresFamilia.Nube.Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace BaresFamilia.Nube.Api.Controllers;
 
 /// <summary>
 /// Controlador en la Nube para reportería consolidada del Backoffice.
-/// La anulación (de ítem o de comanda completa) vive como estado directamente en
-/// ComandaItem (Cancelado, MotivoAnulacion, AnuladoPorUsuarioId, FechaAnulacion) —
-/// no hay una tabla de auditoría separada, así estos reportes y el futuro reporte
-/// de mix de productos comparten la misma fuente de verdad.
+/// Flujo: ReportesController → IReporteVentasService → ReporteVentasService → IReporteVentasRepository → ReporteVentasRepository.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "Backoffice")]
 public class ReportesController : ControllerBase
 {
-    private readonly NubeContext _context;
+    private readonly IReporteVentasService _reporteVentasService;
 
-    public ReportesController(NubeContext context)
+    public ReportesController(IReporteVentasService reporteVentasService)
     {
-        _context = context;
+        _reporteVentasService = reporteVentasService;
     }
 
     /// <summary>
@@ -37,13 +27,6 @@ public class ReportesController : ControllerBase
     /// usado en el resto del sistema, ya que no existe un número de ticket secuencial).
     /// </summary>
     private static string NumeroOrden(Guid comandaId) => $"#{comandaId.ToString()[..8]}";
-
-    private static (int pagina, int tamanoPagina) NormalizarPaginacion(int pagina, int tamanoPagina)
-    {
-        if (pagina < 1) pagina = 1;
-        if (tamanoPagina < 1 || tamanoPagina > 200) tamanoPagina = 50;
-        return (pagina, tamanoPagina);
-    }
 
     /// <summary>
     /// Resuelve el sucursalId efectivo a aplicar en las consultas: si el usuario
@@ -68,29 +51,11 @@ public class ReportesController : ControllerBase
         [FromQuery] int tamanoPagina = 50,
         CancellationToken ct = default)
     {
-        (pagina, tamanoPagina) = NormalizarPaginacion(pagina, tamanoPagina);
-        var sucId = ResolveSucursalId(sucursalId);
-
-        var query = _context.Set<ComandaItem>()
-            .Include(i => i.Producto)
-            .Include(i => i.AnuladoPorUsuario)
-            .Where(i => i.Cancelado && i.IsActive);
-
-        if (sucId.HasValue) query = query.Where(i => i.AnuladoPorUsuario != null && i.AnuladoPorUsuario.SucursalId == sucId.Value);
-        // El rango filtra por la fecha contable del turno de la comanda a la que pertenece el ítem, no por el momento de la anulación.
         // Los DateTime? de query string llegan con Kind=Unspecified; Npgsql exige Utc contra timestamptz.
-        if (desde.AsUtc() is DateTime desdeUtc) query = query.Where(i => i.Comanda.FechaContable >= desdeUtc);
-        if (hasta.AsUtc() is DateTime hastaUtc) query = query.Where(i => i.Comanda.FechaContable <= hastaUtc);
+        var resultado = await _reporteVentasService.GetItemsAnuladosAsync(
+            ResolveSucursalId(sucursalId), desde.AsUtc(), hasta.AsUtc(), pagina, tamanoPagina, ct);
 
-        var total = await query.CountAsync(ct);
-
-        var registros = await query
-            .OrderByDescending(i => i.FechaAnulacion)
-            .Skip((pagina - 1) * tamanoPagina)
-            .Take(tamanoPagina)
-            .ToListAsync(ct);
-
-        var items = registros.Select(i => new
+        var items = resultado.Items.Select(i => new
         {
             id = i.Id,
             numeroOrden = NumeroOrden(i.ComandaId),
@@ -103,7 +68,7 @@ public class ReportesController : ControllerBase
             fecha = i.FechaAnulacion
         });
 
-        return Ok(new { total, pagina, tamanoPagina, items });
+        return Ok(new { total = resultado.Total, pagina = resultado.Pagina, tamanoPagina = resultado.TamanoPagina, items });
     }
 
     /// <summary>
@@ -122,29 +87,10 @@ public class ReportesController : ControllerBase
         [FromQuery] int tamanoPagina = 50,
         CancellationToken ct = default)
     {
-        (pagina, tamanoPagina) = NormalizarPaginacion(pagina, tamanoPagina);
-        var sucId = ResolveSucursalId(sucursalId);
+        var resultado = await _reporteVentasService.GetComandasAnuladasAsync(
+            ResolveSucursalId(sucursalId), desde.AsUtc(), hasta.AsUtc(), pagina, tamanoPagina, ct);
 
-        var query = _context.Comandas
-            .Include(c => c.Items)
-                .ThenInclude(i => i.AnuladoPorUsuario)
-            .Where(c => c.Estado == ComandaEstado.Anulada && c.IsActive);
-
-        if (sucId.HasValue) query = query.Where(c => c.Usuario.SucursalId == sucId.Value);
-        // El rango filtra por la fecha contable del turno, no por el momento de la anulación.
-        // Los DateTime? de query string llegan con Kind=Unspecified; Npgsql exige Utc contra timestamptz.
-        if (desde.AsUtc() is DateTime desdeUtc) query = query.Where(c => c.FechaContable >= desdeUtc);
-        if (hasta.AsUtc() is DateTime hastaUtc) query = query.Where(c => c.FechaContable <= hastaUtc);
-
-        var total = await query.CountAsync(ct);
-
-        var comandas = await query
-            .OrderByDescending(c => c.UpdatedAt)
-            .Skip((pagina - 1) * tamanoPagina)
-            .Take(tamanoPagina)
-            .ToListAsync(ct);
-
-        var items = comandas.Select(c =>
+        var items = resultado.Items.Select(c =>
         {
             var ultimaAnulacion = c.Items
                 .Where(i => i.Cancelado)
@@ -163,6 +109,6 @@ public class ReportesController : ControllerBase
             };
         });
 
-        return Ok(new { total, pagina, tamanoPagina, items });
+        return Ok(new { total = resultado.Total, pagina = resultado.Pagina, tamanoPagina = resultado.TamanoPagina, items });
     }
 }

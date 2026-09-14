@@ -1,3 +1,4 @@
+using BaresFamilia.Core.Models.Contratos.CuentasCorrientes;
 using BaresFamilia.Core.Models.Entities.CuentasCorrientes;
 using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -98,6 +99,7 @@ public class ClienteController : ControllerBase
     /// Crea un nuevo cliente con su cuenta corriente inicializada en saldo 0.
     /// </summary>
     [HttpPost]
+    [Authorize(Policy = "Backoffice")]
     public async Task<IActionResult> Create([FromBody] CreateClienteRequest request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Nombre) || string.IsNullOrWhiteSpace(request.Apellido))
@@ -135,6 +137,7 @@ public class ClienteController : ControllerBase
     /// Actualiza un cliente existente.
     /// </summary>
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = "Backoffice")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateClienteRequest request, CancellationToken ct)
     {
         var cliente = await _clienteService.GetByIdAsync(id, ct);
@@ -158,6 +161,7 @@ public class ClienteController : ControllerBase
     /// Elimina un cliente (borrado lógico).
     /// </summary>
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = "Backoffice")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var exists = await _clienteService.ExistsAsync(id, ct);
@@ -168,23 +172,3 @@ public class ClienteController : ControllerBase
         return NoContent();
     }
 }
-
-// ═══════════════════════════════════
-// DTOs de Request
-// ═══════════════════════════════════
-
-public record CreateClienteRequest(
-    string Nombre,
-    string Apellido,
-    string? Telefono,
-    string? Email,
-    decimal LimiteCredito
-);
-
-public record UpdateClienteRequest(
-    string Nombre,
-    string Apellido,
-    string? Telefono,
-    string? Email,
-    decimal LimiteCredito
-);

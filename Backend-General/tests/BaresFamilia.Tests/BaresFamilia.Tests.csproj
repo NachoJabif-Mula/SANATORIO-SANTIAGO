@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.*" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\BaresFamilia.Core.Models\BaresFamilia.Core.Models.csproj" />
+    <ProjectReference Include="..\..\src\BaresFamilia.Infrastructure\BaresFamilia.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\BaresFamilia.Nube.Api\BaresFamilia.Nube.Api.csproj" />
+    <ProjectReference Include="..\..\src\BaresFamilia.Local.Api\BaresFamilia.Local.Api.csproj" />
+  </ItemGroup>
+
+</Project>

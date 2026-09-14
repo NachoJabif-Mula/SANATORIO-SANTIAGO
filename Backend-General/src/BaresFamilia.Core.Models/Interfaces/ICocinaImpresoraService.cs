@@ -1,3 +1,4 @@
+using BaresFamilia.Core.Models.Contratos.Comandas;
 using BaresFamilia.Core.Models.Entities.Transaccional;
 
 namespace BaresFamilia.Core.Models.Interfaces;
@@ -25,15 +26,4 @@ public interface IImpresoraService
         Comanda comanda,
         Dictionary<string, string>? datosExtra = null,
         CancellationToken ct = default);
-}
-
-/// <summary>
-/// Resultado de una operación de impresión.
-/// </summary>
-public class ResultadoImpresion
-{
-    public bool Exitoso { get; set; }
-    public string Mensaje { get; set; } = string.Empty;
-    public string? ImpresoraUtilizada { get; set; }
-    public string? TicketContenido { get; set; }
 }

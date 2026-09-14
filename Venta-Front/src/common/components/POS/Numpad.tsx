@@ -36,21 +36,21 @@ export default function Numpad({ maxLength = 4, onSubmit, error = false, submitL
   return (
     <div className="flex flex-col items-center gap-5 w-full max-w-[280px]">
       {/* Indicadores de PIN */}
-      <div className={`flex gap-4 mb-2 ${error ? 'animate-shake' : ''}`}>
+      <div className={`flex gap-3 mb-1 ${error ? 'animate-shake' : ''}`}>
         {Array.from({ length: maxLength }).map((_, i) => (
           <div
             key={i}
             className={`w-3.5 h-3.5 rounded-full border transition-all duration-150 ${
               i < value.length
                 ? 'bg-amber-500 border-amber-500'
-                : 'border-slate-700 bg-transparent'
+                : error ? 'border-danger-500 bg-transparent' : 'border-border-default bg-transparent'
             }`}
           />
         ))}
       </div>
 
       {/* Teclado numérico */}
-      <div className="grid grid-cols-3 gap-2.5 w-full">
+      <div className="grid grid-cols-3 gap-2 w-full">
         {KEYS.map(key => {
           const isDel = key === 'DEL';
           const isOk = key === 'OK';
@@ -64,14 +64,13 @@ export default function Numpad({ maxLength = 4, onSubmit, error = false, submitL
               disabled={isDisabled}
               className={`
                 touch-btn flex items-center justify-center rounded-[var(--radius-numpad)]
-                transition-all duration-100 font-medium select-none
-                active:scale-[0.96] active:bg-slate-800/80
+                font-medium select-none border font-mono
                 ${
                   isOk
-                    ? 'bg-amber-500 text-slate-950 font-bold hover:bg-amber-400 border border-amber-500/20 disabled:opacity-20 disabled:bg-slate-900/30 disabled:text-text-muted/40 disabled:border-border-default/40 disabled:cursor-not-allowed shadow-sm'
+                    ? 'bg-amber-500 text-white font-bold hover:bg-amber-600 border-amber-500 disabled:opacity-30 disabled:bg-surface-raised disabled:text-text-muted disabled:border-border-default disabled:cursor-not-allowed'
                     : isDel
-                    ? 'bg-slate-900/30 text-text-secondary hover:bg-slate-850 border border-border-default/60 hover:text-text-primary'
-                    : 'bg-slate-900/60 text-text-primary hover:bg-slate-850 border border-border-default/80 hover:border-border-strong'
+                    ? 'bg-surface-base text-text-secondary hover:border-amber-500 hover:text-amber-500 border-border-default'
+                    : 'bg-surface-base text-text-primary hover:border-amber-500 border-border-default'
                 }
                 h-14 text-xl
               `}
@@ -79,7 +78,7 @@ export default function Numpad({ maxLength = 4, onSubmit, error = false, submitL
               {isDel ? (
                 <Delete className="w-5 h-5 stroke-[1.5]" />
               ) : isOk ? (
-                <span className="flex items-center gap-1.5 text-sm font-bold tracking-wide">
+                <span className="flex items-center gap-1.5 text-sm font-bold tracking-wide font-sans">
                   <CornerDownLeft className="w-4 h-4 stroke-[2]" />
                   {submitLabel}
                 </span>

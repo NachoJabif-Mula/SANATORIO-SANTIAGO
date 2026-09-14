@@ -7,12 +7,12 @@ using Microsoft.EntityFrameworkCore;
 namespace BaresFamilia.Infrastructure.Repositories;
 
 /// <summary>
-/// Repositorio específico para Comanda contra LocalContext.
+/// Repositorio específico para Comanda.
 /// Hereda GenericRepository para CRUD estándar.
 /// </summary>
 public class ComandaRepository : GenericRepository<Comanda>, IComandaRepository
 {
-    public ComandaRepository(LocalContext context) : base(context) { }
+    public ComandaRepository(DbContext context) : base(context) { }
 
     public async Task<Comanda?> GetWithDetailsAsync(Guid id, CancellationToken ct = default)
         => await _dbSet
@@ -29,6 +29,7 @@ public class ComandaRepository : GenericRepository<Comanda>, IComandaRepository
 
     public async Task<IEnumerable<Comanda>> GetAbierdasPorMesaAsync(Guid mesaId, CancellationToken ct = default)
         => await _dbSet
+            .AsNoTracking()
             .Where(c => c.MesaId == mesaId && c.Estado == ComandaEstado.Abierta && c.IsActive)
             .Include(c => c.Items)
                 .ThenInclude(i => i.Producto)
@@ -37,6 +38,7 @@ public class ComandaRepository : GenericRepository<Comanda>, IComandaRepository
 
     public async Task<IEnumerable<Comanda>> GetAbiertasPorClienteAsync(Guid clienteId, CancellationToken ct = default)
         => await _dbSet
+            .AsNoTracking()
             .Where(c => c.ClienteId == clienteId && c.Estado == ComandaEstado.Abierta && c.IsActive)
             .Include(c => c.Items)
                 .ThenInclude(i => i.Producto)
@@ -52,6 +54,7 @@ public class ComandaRepository : GenericRepository<Comanda>, IComandaRepository
 
     public async Task<IEnumerable<Comanda>> GetAllWithDetailsAsync(CancellationToken ct = default)
         => await _dbSet
+            .AsNoTracking()
             .Where(c => c.IsActive)
             .Include(c => c.Items)
                 .ThenInclude(i => i.Producto)
@@ -87,4 +90,36 @@ public class ComandaRepository : GenericRepository<Comanda>, IComandaRepository
         // 4. Guardar
         await _context.SaveChangesAsync(ct);
     }
+
+    public async Task<int> ContarAbiertasDeTurnoAsync(DateTime fechaContable, string turno, CancellationToken ct = default)
+        => await FiltrarAbiertasDeTurno(fechaContable, turno).CountAsync(ct);
+
+    public async Task<IEnumerable<Comanda>> GetAbiertasDeTurnoAsync(DateTime fechaContable, string turno, CancellationToken ct = default)
+        => await FiltrarAbiertasDeTurno(fechaContable, turno).ToListAsync(ct);
+
+    public async Task<int> ContarAbiertasDeFechaAsync(DateTime fechaContable, CancellationToken ct = default)
+        => await _dbSet.CountAsync(
+            c => c.FechaContable != null
+                && c.FechaContable.Value.Date == fechaContable.Date
+                && c.Estado == ComandaEstado.Abierta
+                && c.IsActive,
+            ct);
+
+    public async Task GuardarCambiosAsync(IEnumerable<Comanda> comandas, CancellationToken ct = default)
+    {
+        _dbSet.UpdateRange(comandas);
+        await _context.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Comandas abiertas de un turno. Las cuentas corrientes abiertas quedan fuera:
+    /// tienen FechaContable null porque están exentas del ciclo de turnos.
+    /// </summary>
+    private IQueryable<Comanda> FiltrarAbiertasDeTurno(DateTime fechaContable, string turno)
+        => _dbSet.Where(
+            c => c.FechaContable != null
+                && c.FechaContable.Value.Date == fechaContable.Date
+                && c.Turno == turno
+                && c.Estado == ComandaEstado.Abierta
+                && c.IsActive);
 }

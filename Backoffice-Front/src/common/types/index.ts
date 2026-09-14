@@ -22,6 +22,7 @@ export interface Sucursal {
 
 export interface Categoria {
   id: string;
+  sucursalId: string;
   nombre: string;
   ordenVisual: number;
   isActive: boolean;
@@ -29,6 +30,7 @@ export interface Categoria {
 
 export interface Producto {
   id: string;
+  sucursalId: string;
   categoriaId: string;
   nombre: string;
   colorUi: string;

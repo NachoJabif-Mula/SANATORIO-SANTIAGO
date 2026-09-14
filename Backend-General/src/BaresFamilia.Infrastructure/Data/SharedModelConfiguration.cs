@@ -1,6 +1,7 @@
 using BaresFamilia.Core.Models.Entities;
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Entities.CuentasCorrientes;
+using BaresFamilia.Core.Models.Entities.Fiscal;
 using BaresFamilia.Core.Models.Entities.Inventario;
 using BaresFamilia.Core.Models.Entities.Seguridad;
 using BaresFamilia.Core.Models.Entities.Transaccional;
@@ -91,9 +92,33 @@ public static class SharedModelConfiguration
         ConfigureBaseEntity<Impresora>(modelBuilder);
         ConfigureBaseEntity<TipoTicket>(modelBuilder);
         ConfigureBaseEntity<ImpresoraTicketTipo>(modelBuilder);
+        ConfigureBaseEntity<PrintJob>(modelBuilder);
         ConfigureImpresora(modelBuilder);
         ConfigureTipoTicket(modelBuilder);
         ConfigureImpresoraTicketTipo(modelBuilder);
+        ConfigurePrintJob(modelBuilder);
+
+        // ========================
+        // FACTURACIÓN ELECTRÓNICA (ARCA)
+        // ========================
+        ConfigureBaseEntity<ConfiguracionFiscalSucursal>(modelBuilder);
+        ConfigureBaseEntity<TicketAccesoWsaa>(modelBuilder);
+        ConfigureBaseEntity<Comprobante>(modelBuilder);
+        ConfigureBaseEntity<ComprobanteAlicuota>(modelBuilder);
+        ConfigureConfiguracionFiscalSucursal(modelBuilder);
+        ConfigureTicketAccesoWsaa(modelBuilder);
+        ConfigureComprobante(modelBuilder);
+        ConfigureComprobanteAlicuota(modelBuilder);
+    }
+
+    /// <summary>
+    /// Configuración exclusiva de la Nube: entidades que no existen en la API Local
+    /// (las sesiones de Backoffice solo se emiten/validan contra la Nube).
+    /// </summary>
+    public static void ConfigureNubeOnlyModel(ModelBuilder modelBuilder)
+    {
+        ConfigureBaseEntity<SesionUsuario>(modelBuilder);
+        ConfigureSesionUsuario(modelBuilder);
     }
 
     /// <summary>
@@ -225,6 +250,12 @@ public static class SharedModelConfiguration
                   .IsRequired();
 
             entity.HasIndex(e => e.OrdenVisual);
+            entity.HasIndex(e => e.SucursalId);
+
+            entity.HasOne(e => e.Sucursal)
+                  .WithMany(s => s.Categorias)
+                  .HasForeignKey(e => e.SucursalId)
+                  .OnDelete(DeleteBehavior.Restrict);
         });
     }
 
@@ -244,6 +275,13 @@ public static class SharedModelConfiguration
 
             entity.Property(e => e.RequiereCocina)
                   .IsRequired();
+
+            entity.HasIndex(e => e.SucursalId);
+
+            entity.HasOne(e => e.Sucursal)
+                  .WithMany(s => s.Productos)
+                  .HasForeignKey(e => e.SucursalId)
+                  .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasOne(e => e.Categoria)
                   .WithMany(c => c.Productos)
@@ -661,6 +699,38 @@ public static class SharedModelConfiguration
         });
     }
 
+    private static void ConfigureSesionUsuario(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<SesionUsuario>(entity =>
+        {
+            entity.ToTable("SesionesUsuario");
+
+            entity.Property(e => e.TokenHash)
+                  .IsRequired()
+                  .HasColumnType("text");
+
+            entity.Property(e => e.ExpiraEn)
+                  .IsRequired();
+
+            entity.Property(e => e.Revocada)
+                  .IsRequired()
+                  .HasDefaultValue(false);
+
+            entity.Property(e => e.UserAgent)
+                  .HasMaxLength(300);
+
+            entity.HasIndex(e => e.TokenHash)
+                  .IsUnique();
+
+            entity.HasIndex(e => e.UsuarioId);
+
+            entity.HasOne(e => e.Usuario)
+                  .WithMany()
+                  .HasForeignKey(e => e.UsuarioId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
     // ========================
     // DOMINIO INVENTARIO
     // ========================
@@ -1002,6 +1072,250 @@ public static class SharedModelConfiguration
                   .WithMany()
                   .HasForeignKey(e => e.UsuarioCierreId)
                   .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigurePrintJob(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PrintJob>(entity =>
+        {
+            entity.ToTable("PrintJobs");
+
+            entity.Property(e => e.Estado)
+                  .IsRequired()
+                  .HasConversion<string>()
+                  .HasMaxLength(20);
+
+            entity.Property(e => e.TipoDocumento)
+                  .IsRequired()
+                  .HasMaxLength(50);
+
+            entity.Property(e => e.PayloadJson)
+                  .IsRequired()
+                  .HasColumnType("text");
+
+            entity.Property(e => e.ResultadoJson)
+                  .HasColumnType("text");
+
+            entity.Property(e => e.UltimoError)
+                  .HasMaxLength(1000);
+
+            entity.Property(e => e.SyncEstado)
+                  .IsRequired()
+                  .HasConversion<string>()
+                  .HasMaxLength(20);
+
+            entity.HasIndex(e => e.Estado);
+            entity.HasIndex(e => e.SyncEstado);
+            entity.HasIndex(e => new { e.SucursalId, e.CreatedAt });
+
+            entity.HasOne(e => e.Sucursal)
+                  .WithMany()
+                  .HasForeignKey(e => e.SucursalId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Impresora)
+                  .WithMany()
+                  .HasForeignKey(e => e.ImpresoraId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Comprobante)
+                  .WithMany()
+                  .HasForeignKey(e => e.ComprobanteId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+    }
+
+    // ========================
+    // FACTURACIÓN ELECTRÓNICA (ARCA)
+    // ========================
+
+    private static void ConfigureConfiguracionFiscalSucursal(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ConfiguracionFiscalSucursal>(entity =>
+        {
+            entity.ToTable("ConfiguracionesFiscales");
+
+            entity.Property(e => e.Ambiente)
+                  .IsRequired()
+                  .HasConversion<string>()
+                  .HasMaxLength(20);
+
+            entity.Property(e => e.CertificadoNombreArchivo)
+                  .HasMaxLength(300);
+
+            entity.Property(e => e.CertificadoSubject)
+                  .HasMaxLength(500);
+
+            entity.Property(e => e.CertificadoThumbprint)
+                  .HasMaxLength(100);
+
+            entity.Property(e => e.CsrSubject)
+                  .HasMaxLength(500);
+
+            entity.Property(e => e.UltimaValidacionMensaje)
+                  .HasMaxLength(1000);
+
+            // Relación 1:1 con Sucursal: cada sucursal factura con su propio certificado.
+            entity.HasIndex(e => e.SucursalId)
+                  .IsUnique();
+
+            entity.HasOne(e => e.Sucursal)
+                  .WithOne(s => s.ConfiguracionFiscal)
+                  .HasForeignKey<ConfiguracionFiscalSucursal>(e => e.SucursalId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureTicketAccesoWsaa(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<TicketAccesoWsaa>(entity =>
+        {
+            entity.ToTable("TicketsAccesoWsaa");
+
+            entity.Property(e => e.Ambiente)
+                  .IsRequired()
+                  .HasConversion<string>()
+                  .HasMaxLength(20);
+
+            entity.Property(e => e.Servicio)
+                  .IsRequired()
+                  .HasMaxLength(20);
+
+            entity.Property(e => e.Token)
+                  .IsRequired()
+                  .HasColumnType("text");
+
+            entity.Property(e => e.Sign)
+                  .IsRequired()
+                  .HasColumnType("text");
+
+            // Un único TA vigente por sucursal, ambiente y servicio.
+            entity.HasIndex(e => new { e.SucursalId, e.Ambiente, e.Servicio })
+                  .IsUnique();
+
+            entity.HasIndex(e => e.ExpiraEn);
+
+            entity.HasOne(e => e.Sucursal)
+                  .WithMany()
+                  .HasForeignKey(e => e.SucursalId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureComprobante(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Comprobante>(entity =>
+        {
+            entity.ToTable("Comprobantes");
+
+            entity.Property(e => e.TipoComprobante)
+                  .IsRequired()
+                  .HasConversion<string>()
+                  .HasMaxLength(30);
+
+            entity.Property(e => e.Ambiente)
+                  .IsRequired()
+                  .HasConversion<string>()
+                  .HasMaxLength(20);
+
+            entity.Property(e => e.Estado)
+                  .IsRequired()
+                  .HasConversion<string>()
+                  .HasMaxLength(20);
+
+            entity.Property(e => e.SyncEstado)
+                  .IsRequired()
+                  .HasConversion<string>()
+                  .HasMaxLength(20);
+
+            entity.Property(e => e.FechaEmision)
+                  .IsRequired();
+
+            entity.Property(e => e.CuitEmisor)
+                  .IsRequired()
+                  .HasMaxLength(20);
+
+            entity.Property(e => e.RazonSocialEmisor)
+                  .IsRequired()
+                  .HasMaxLength(250);
+
+            entity.Property(e => e.NumeroDocumentoReceptor)
+                  .HasMaxLength(20);
+
+            entity.Property(e => e.RazonSocialReceptor)
+                  .HasMaxLength(250);
+
+            entity.Property(e => e.ImporteNeto).IsRequired().HasPrecision(18, 2);
+            entity.Property(e => e.ImporteIva).IsRequired().HasPrecision(18, 2);
+            entity.Property(e => e.ImporteExento).IsRequired().HasPrecision(18, 2);
+            entity.Property(e => e.ImporteNoGravado).IsRequired().HasPrecision(18, 2);
+            entity.Property(e => e.ImporteTotal).IsRequired().HasPrecision(18, 2);
+
+            entity.Property(e => e.Cae)
+                  .HasMaxLength(20);
+
+            entity.Property(e => e.QrPayload)
+                  .HasColumnType("text");
+
+            entity.Property(e => e.ObservacionesArca)
+                  .HasColumnType("text");
+
+            entity.Property(e => e.UltimoError)
+                  .HasMaxLength(1000);
+
+            entity.Property(e => e.RequestXml)
+                  .HasColumnType("text");
+
+            entity.Property(e => e.ResponseXml)
+                  .HasColumnType("text");
+
+            // Correlatividad: ARCA no admite dos comprobantes con el mismo número para un
+            // punto de venta y tipo. Los pendientes todavía no tienen número asignado (0),
+            // por eso el índice se filtra sobre los ya numerados.
+            entity.HasIndex(e => new { e.SucursalId, e.PuntoVenta, e.TipoComprobante, e.NumeroComprobante })
+                  .IsUnique()
+                  .HasFilter("\"NumeroComprobante\" > 0");
+
+            entity.HasIndex(e => e.Estado);
+            entity.HasIndex(e => e.SyncEstado);
+            entity.HasIndex(e => e.ComandaId);
+            entity.HasIndex(e => new { e.SucursalId, e.FechaEmision });
+
+            entity.HasOne(e => e.Sucursal)
+                  .WithMany()
+                  .HasForeignKey(e => e.SucursalId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.Comanda)
+                  .WithMany()
+                  .HasForeignKey(e => e.ComandaId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
+    }
+
+    private static void ConfigureComprobanteAlicuota(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ComprobanteAlicuota>(entity =>
+        {
+            entity.ToTable("ComprobanteAlicuotas");
+
+            entity.Property(e => e.Alicuota)
+                  .IsRequired()
+                  .HasConversion<string>()
+                  .HasMaxLength(20);
+
+            entity.Property(e => e.BaseImponible).IsRequired().HasPrecision(18, 2);
+            entity.Property(e => e.Importe).IsRequired().HasPrecision(18, 2);
+
+            // WSFEv1 admite una sola entrada por alícuota dentro del mismo comprobante.
+            entity.HasIndex(e => new { e.ComprobanteId, e.Alicuota })
+                  .IsUnique();
+
+            entity.HasOne(e => e.Comprobante)
+                  .WithMany(c => c.Alicuotas)
+                  .HasForeignKey(e => e.ComprobanteId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

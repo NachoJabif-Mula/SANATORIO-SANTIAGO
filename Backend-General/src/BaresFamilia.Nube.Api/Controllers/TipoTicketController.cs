@@ -1,11 +1,17 @@
+using BaresFamilia.Core.Models.Contratos.Catalogos;
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BaresFamilia.Nube.Api.Controllers;
 
+// [Authorize] a secas (no Policy="Backoffice") porque la API Local sincroniza
+// el catálogo de tipos de ticket con un token M2M via GET /api/tipo-ticket.
+// Solo la edición del template (Update) se restringe a usuarios del Backoffice.
 [ApiController]
 [Route("api/tipo-ticket")]
+[Authorize]
 public class TipoTicketController : ControllerBase
 {
     private readonly IService<TipoTicket> _tipoTicketService;
@@ -41,6 +47,7 @@ public class TipoTicketController : ControllerBase
     /// Actualiza el template de un tipo de ticket.
     /// </summary>
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = "Backoffice")]
     public async Task<IActionResult> Update(Guid id, [FromBody] ActualizarTipoTicketRequest request, CancellationToken ct)
     {
         var tipo = await _tipoTicketService.GetByIdAsync(id, ct);
@@ -55,5 +62,3 @@ public class TipoTicketController : ControllerBase
         return Ok(tipo);
     }
 }
-
-public record ActualizarTipoTicketRequest(string Nombre, string TemplateContenido);

@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
+using BaresFamilia.Core.Models.Contratos.Comandas;
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Entities.CuentasCorrientes;
+using BaresFamilia.Core.Models.Entities.Fiscal;
 using BaresFamilia.Core.Models.Entities.Inventario;
 using BaresFamilia.Core.Models.Entities.Transaccional;
 using BaresFamilia.Core.Models.Enums;
@@ -34,6 +36,7 @@ public class ComandaService : GenericService<Comanda>, IComandaService
     private readonly IRepository<ComandaItem> _comandaItemRepository;
     private readonly IRepository<Receta> _recetaRepository;
     private readonly IRepository<StockSucursal> _stockSucursalRepository;
+    private readonly IFacturacionElectronicaService _facturacionElectronicaService;
     private readonly ILogger<ComandaService> _logger;
 
     public ComandaService(
@@ -52,6 +55,7 @@ public class ComandaService : GenericService<Comanda>, IComandaService
         IRepository<ComandaItem> comandaItemRepository,
         IRepository<Receta> recetaRepository,
         IRepository<StockSucursal> stockSucursalRepository,
+        IFacturacionElectronicaService facturacionElectronicaService,
         ILogger<ComandaService> logger) : base(repository)
     {
         _comandaRepository = repository;
@@ -69,6 +73,7 @@ public class ComandaService : GenericService<Comanda>, IComandaService
         _comandaItemRepository = comandaItemRepository;
         _recetaRepository = recetaRepository;
         _stockSucursalRepository = stockSucursalRepository;
+        _facturacionElectronicaService = facturacionElectronicaService;
         _logger = logger;
     }
 
@@ -134,7 +139,8 @@ public class ComandaService : GenericService<Comanda>, IComandaService
         }
 
         // Intentar enviar ticket de comanda a las impresoras configuradas
-        await EnviarTicketComandaAsync(created.Id, ct);
+        var resultadosImpresion = await EnviarTicketComandaAsync(created.Id, ct);
+        created.UltimaImpresion = ConsolidarResultadoImpresion(resultadosImpresion);
 
         return created;
     }
@@ -193,8 +199,16 @@ public class ComandaService : GenericService<Comanda>, IComandaService
     public async Task<ResultadoImpresion> EnviarAPreparacionAsync(Guid comandaId, CancellationToken ct = default)
     {
         var resultados = await EnviarTicketComandaAsync(comandaId, ct);
+        return ConsolidarResultadoImpresion(resultados);
+    }
 
-        // Retornamos un resumen consolidado
+    /// <summary>
+    /// Reduce la lista de resultados por-impresora (una comanda puede imprimirse en varias)
+    /// a un único resumen: éxito global, impresoras usadas, y el primer ticket renderizado
+    /// (para mostrarlo en pantalla en modo simulador).
+    /// </summary>
+    private static ResultadoImpresion ConsolidarResultadoImpresion(List<ResultadoImpresion> resultados)
+    {
         if (resultados.Count == 0)
             return new ResultadoImpresion { Exitoso = true, Mensaje = "No hay impresoras configuradas." };
 
@@ -206,7 +220,8 @@ public class ComandaService : GenericService<Comanda>, IComandaService
             Exitoso = fallidos == 0,
             Mensaje = $"Impresión: {exitosos} exitosa(s), {fallidos} fallida(s).",
             ImpresoraUtilizada = string.Join(", ", resultados.Where(r => r.ImpresoraUtilizada != null).Select(r => r.ImpresoraUtilizada)),
-            TicketContenido = resultados.FirstOrDefault(r => r.TicketContenido != null)?.TicketContenido
+            TicketContenido = resultados.FirstOrDefault(r => r.TicketContenido != null)?.TicketContenido,
+            Simulado = resultados.Any(r => r.Simulado)
         };
     }
 
@@ -431,87 +446,78 @@ public class ComandaService : GenericService<Comanda>, IComandaService
     }
 
     // ═══════════════════════════════════════════════════════
-    // INTEGRACIÓN SIMULADA — AFIP WSFEv1
+    // FACTURACIÓN ELECTRÓNICA — ARCA WSFEv1
     // ═══════════════════════════════════════════════════════
 
     /// <summary>
-    /// Simula la integración con el Web Service de Factura Electrónica de AFIP (WSFEv1).
-    /// En producción, este método se reemplazará por la llamada real al WS.
+    /// Emite el comprobante electrónico de la venta contra WSFEv1 y, si ARCA lo autorizó,
+    /// lo manda a imprimir.
     ///
-    /// Flujo simulado:
-    /// 1. FECAESolicitar → Obtiene CAE y vencimiento
-    /// 2. Genera número de comprobante
-    /// 3. Imprime factura en las impresoras de caja configuradas
+    /// El cobro nunca se revierte por un problema de facturación: si ARCA no responde, el
+    /// comprobante queda pendiente de reintento y la venta sigue registrada.
     /// </summary>
     private async Task<ResultadoCobro> ProcesarFacturaAfipAsync(
         ResultadoCobro resultado, Comanda comanda, decimal montoTotal, CancellationToken ct)
     {
-        _logger.LogInformation("═══ AFIP WSFEv1 ═══ Iniciando facturación para Comanda {ComandaId}", comanda.Id);
+        var sucursalId = comanda.Mesa?.SucursalId ?? comanda.Usuario?.SucursalId;
+        if (sucursalId is null)
+        {
+            _logger.LogWarning("No se pudo determinar la sucursal para facturar la comanda {ComandaId}.", comanda.Id);
+            resultado.Mensaje = "Cobro registrado, pero no se pudo determinar la sucursal para facturar.";
+            return resultado;
+        }
 
+        Comprobante comprobante;
         try
         {
-            // ── Paso 1: Simular FECAESolicitar ──────────────────────
-            await Task.Delay(100, ct); // Simula latencia de red al WS AFIP
-
-            var caeNumero = GenerarCaeSimulado();
-            var caeVencimiento = DateTime.UtcNow.AddDays(10).ToString("yyyyMMdd");
-            var puntoVenta = 1;
-            var nroComprobante = new Random().Next(10000, 99999);
-
-            _logger.LogInformation(
-                "═══ AFIP WSFEv1 ═══ CAE obtenido: {CAE}, Vencimiento: {Vto}, Comprobante: {PV}-{Nro}",
-                caeNumero, caeVencimiento, puntoVenta.ToString("D4"), nroComprobante.ToString("D8"));
-
-            resultado.FacturaAfipEmitida = true;
-            resultado.CaeNumero = caeNumero;
-            resultado.CaeVencimiento = caeVencimiento;
-            resultado.ComprobanteNumero = $"{puntoVenta:D4}-{nroComprobante:D8}";
-
-            // ── Paso 2: Imprimir factura en impresoras de caja ──────
-            var sucursalId = comanda.Mesa?.SucursalId ?? comanda.Usuario?.SucursalId;
-            if (sucursalId.HasValue)
-            {
-                var datosExtra = new Dictionary<string, string>
-                {
-                    { "CAE", caeNumero },
-                    { "CAE_VTO", caeVencimiento },
-                    { "COMPROBANTE_NRO", resultado.ComprobanteNumero },
-                    { "METODO_PAGO", "—" },
-                    { "MONTO_PAGADO", montoTotal.ToString("N2") }
-                };
-
-                // Imprimir Factura B por defecto (en producción se determinará A o B)
-                var resultadosImpresion = await _impresoraService.ImprimirTicketAsync(
-                    sucursalId.Value, "FacturaB", comanda, datosExtra, ct);
-
-                var ticketContenido = resultadosImpresion
-                    .FirstOrDefault(r => r.TicketContenido != null)?.TicketContenido;
-                resultado.OrdenImpresionUsb = ticketContenido;
-
-                _logger.LogInformation(
-                    "═══ AFIP WSFEv1 ═══ Factura enviada a {Count} impresora(s).",
-                    resultadosImpresion.Count(r => r.Exitoso));
-            }
-
-            resultado.Mensaje = "Cobro procesado y factura AFIP emitida correctamente.";
+            comprobante = await _facturacionElectronicaService.EmitirDesdeComandaAsync(comanda, sucursalId.Value, ct);
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            _logger.LogError(ex, "═══ AFIP WSFEv1 ═══ Error al procesar factura AFIP para Comanda {ComandaId}", comanda.Id);
+            // Falta configuración fiscal: no es algo que se resuelva reintentando.
+            _logger.LogError(ex, "No se pudo facturar la comanda {ComandaId}.", comanda.Id);
             resultado.FacturaAfipEmitida = false;
-            resultado.Mensaje = $"Cobro registrado. Error AFIP: {ex.Message}. Se reintentará la facturación.";
+            resultado.Mensaje = $"Cobro registrado sin factura. {ex.Message}";
+            return resultado;
         }
+
+        resultado.ComprobanteNumero = $"{comprobante.PuntoVenta:D4}-{comprobante.NumeroComprobante:D8}";
+
+        if (comprobante.Estado != EstadoComprobante.Emitido)
+        {
+            resultado.FacturaAfipEmitida = false;
+            resultado.Mensaje = comprobante.Estado == EstadoComprobante.Pendiente
+                ? $"Cobro registrado. La factura quedó pendiente de autorización: {comprobante.UltimoError}"
+                : $"Cobro registrado. ARCA rechazó la factura: {comprobante.UltimoError}";
+            return resultado;
+        }
+
+        resultado.FacturaAfipEmitida = true;
+        resultado.CaeNumero = comprobante.Cae;
+        resultado.CaeVencimiento = comprobante.CaeVencimiento?.ToString("yyyyMMdd");
+        resultado.Mensaje = "Cobro procesado y factura electrónica autorizada por ARCA.";
+
+        var datosExtra = new Dictionary<string, string>
+        {
+            { "CAE", comprobante.Cae ?? string.Empty },
+            { "CAE_VTO", resultado.CaeVencimiento ?? string.Empty },
+            { "COMPROBANTE_NRO", resultado.ComprobanteNumero },
+            { "METODO_PAGO", "—" },
+            { "MONTO_PAGADO", montoTotal.ToString("N2") }
+        };
+
+        var resultadosImpresion = await _impresoraService.ImprimirTicketAsync(
+            sucursalId.Value, comprobante.TipoComprobante.ToString(), comanda, datosExtra, ct);
+
+        var resultadoImpresion = resultadosImpresion.FirstOrDefault(r => r.TicketContenido != null);
+        resultado.OrdenImpresionUsb = resultadoImpresion?.TicketContenido;
+        resultado.Simulado = resultadoImpresion?.Simulado ?? false;
+
+        _logger.LogInformation(
+            "Comprobante {Numero} de la comanda {ComandaId} enviado a {Count} impresora(s).",
+            resultado.ComprobanteNumero, comanda.Id, resultadosImpresion.Count(r => r.Exitoso));
 
         return resultado;
-    }
-
-    /// <summary>
-    /// Genera un CAE simulado de 14 dígitos (formato real de AFIP).
-    /// </summary>
-    private static string GenerarCaeSimulado()
-    {
-        var rng = new Random();
-        return $"{rng.NextInt64(10000000000000, 99999999999999)}";
     }
 
     public async Task<Comanda> UpdateComandaAsync(Guid id, Comanda updatedEntity, CancellationToken ct = default)
@@ -527,15 +533,14 @@ public class ComandaService : GenericService<Comanda>, IComandaService
             throw new InvalidOperationException($"La comanda no está abierta. Estado actual: {existing.Estado}.");
         }
 
-        // Actualizar el empleado que carga la orden si se proporciona
-        if (updatedEntity.UsuarioId != Guid.Empty && updatedEntity.UsuarioId != existing.UsuarioId)
+        // La mesa/comanda queda "tomada" por el mozo que la abrió: sólo ese mozo, o un
+        // usuario con perfil de gerente/administrador, puede modificarla. Esto evita que
+        // un mozo distinto edite (y de paso se apropie de) la orden de otro compañero.
+        if (existing.UsuarioId != Guid.Empty && updatedEntity.UsuarioId != Guid.Empty && updatedEntity.UsuarioId != existing.UsuarioId)
         {
-            var user = await _usuarioRepository.GetByIdAsync(updatedEntity.UsuarioId, ct);
-            if (user != null)
-            {
-                existing.UsuarioId = updatedEntity.UsuarioId;
-                existing.Usuario = user;
-            }
+            var autorizado = await EsGerenteOAdministradorAsync(updatedEntity.UsuarioId, ct);
+            if (!autorizado)
+                throw new UnauthorizedAccessException("Esta mesa/comanda está tomada por otro mozo. Se requiere un gerente o administrador para modificarla.");
         }
 
         // 1. Calcular delta de ítems antes de sobrescribir en BD
@@ -659,7 +664,9 @@ public class ComandaService : GenericService<Comanda>, IComandaService
                 MesaId = existing.MesaId,
                 Mesa = existing.Mesa,
                 UsuarioId = existing.UsuarioId,
-                Usuario = existing.Usuario,
+                // La navegación puede venir sin cargar; el ticket solo necesita el
+                // nombre del mozo cuando está disponible.
+                Usuario = existing.Usuario!,
                 TipoVentaId = existing.TipoVentaId,
                 TipoVenta = existing.TipoVenta,
                 Subtotal = existing.Subtotal,
@@ -670,7 +677,8 @@ public class ComandaService : GenericService<Comanda>, IComandaService
                 Items = deltaItems
             };
 
-            await EnviarTicketComandaObjetoAsync(deltaComanda, ct);
+            var resultadosImpresion = await EnviarTicketComandaObjetoAsync(deltaComanda, ct);
+            existing.UltimaImpresion = ConsolidarResultadoImpresion(resultadosImpresion);
         }
 
         return existing;
@@ -726,7 +734,8 @@ public class ComandaService : GenericService<Comanda>, IComandaService
             Exitoso = fallidos == 0,
             Mensaje = $"Impresión no fiscal: {exitosos} exitosa(s), {fallidos} fallida(s).",
             ImpresoraUtilizada = string.Join(", ", resultados.Where(r => r.ImpresoraUtilizada != null).Select(r => r.ImpresoraUtilizada)),
-            TicketContenido = resultados.FirstOrDefault(r => r.TicketContenido != null)?.TicketContenido
+            TicketContenido = resultados.FirstOrDefault(r => r.TicketContenido != null)?.TicketContenido,
+            Simulado = resultados.Any(r => r.Simulado)
         };
     }
 
@@ -744,6 +753,25 @@ public class ComandaService : GenericService<Comanda>, IComandaService
             }
         }
         await base.DeleteAsync(id, ct);
+    }
+
+    /// <summary>
+    /// Indica si el usuario tiene perfil de Gerente/Administrador (o permiso explícito
+    /// "gerente.override"), habilitado para tomar/editar la mesa de otro mozo.
+    /// </summary>
+    private async Task<bool> EsGerenteOAdministradorAsync(Guid usuarioId, CancellationToken ct)
+    {
+        var usuario = await _usuarioRepository.GetByIdAsync(usuarioId, ct);
+        if (usuario is null)
+            return false;
+
+        var rol = await _rolRepository.GetByIdAsync(usuario.RolId, ct);
+        if (rol is null)
+            return false;
+
+        return string.Equals(rol.Nombre, "gerente", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(rol.Nombre, "administrador", StringComparison.OrdinalIgnoreCase)
+            || rol.Permisos.Contains("gerente.override");
     }
 
     /// <summary>

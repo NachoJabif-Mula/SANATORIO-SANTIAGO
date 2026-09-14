@@ -1,3 +1,4 @@
+using BaresFamilia.Core.Models.Contratos.Comandas;
 using BaresFamilia.Core.Models.Entities.Transaccional;
 
 namespace BaresFamilia.Core.Models.Interfaces;
@@ -63,27 +64,4 @@ public interface IComandaService : IService<Comanda>
     /// Requiere un motivo obligatorio y valida el mismo permiso que AnularComandaAsync.
     /// </summary>
     Task AnularItemComandaAsync(Guid comandaId, Guid comandaItemId, Guid usuarioId, string motivo, CancellationToken ct = default);
-}
-
-/// <summary>
-/// DTO para registrar un pago parcial dentro del cobro.
-/// ClienteId es requerido solo cuando el método es "Cuenta Corriente".
-/// </summary>
-public record PagoItemDto(Guid MetodoPagoId, decimal Monto, Guid? ClienteId = null);
-
-/// <summary>
-/// Resultado del proceso de cobro con información de facturación AFIP.
-/// </summary>
-public class ResultadoCobro
-{
-    public bool Exitoso { get; set; }
-    public string Mensaje { get; set; } = string.Empty;
-    public Guid? PagoId { get; set; }
-
-    // Datos AFIP (cuando aplica)
-    public bool FacturaAfipEmitida { get; set; }
-    public string? CaeNumero { get; set; }
-    public string? CaeVencimiento { get; set; }
-    public string? ComprobanteNumero { get; set; }
-    public string? OrdenImpresionUsb { get; set; }
 }

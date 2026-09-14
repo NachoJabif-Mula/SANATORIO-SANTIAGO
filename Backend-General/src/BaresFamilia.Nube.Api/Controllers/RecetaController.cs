@@ -1,3 +1,4 @@
+using BaresFamilia.Core.Models.Contratos.Inventario;
 using BaresFamilia.Core.Models.Entities.Inventario;
 using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -12,7 +13,7 @@ namespace BaresFamilia.Nube.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "Backoffice")]
 public class RecetaController : ControllerBase
 {
     private readonly IRecetaService _recetaService;
@@ -119,17 +120,3 @@ public class RecetaController : ControllerBase
         return NoContent();
     }
 }
-
-// ═══════════════════════════════════
-// DTOs de Request
-// ═══════════════════════════════════
-
-public record CreateRecetaRequest(
-    Guid ProductoId,
-    Guid InsumoId,
-    decimal CantidadNecesaria
-);
-
-public record UpdateRecetaRequest(
-    decimal CantidadNecesaria
-);

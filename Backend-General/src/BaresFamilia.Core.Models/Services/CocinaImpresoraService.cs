@@ -1,5 +1,6 @@
 using System.Net.Sockets;
 using System.Text;
+using BaresFamilia.Core.Models.Contratos.Comandas;
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Entities.Transaccional;
 using BaresFamilia.Core.Models.Enums;
@@ -19,17 +20,20 @@ public class ImpresoraService : IImpresoraService
     private readonly IRepository<Impresora> _impresoraRepo;
     private readonly IRepository<TipoTicket> _tipoTicketRepo;
     private readonly IRepository<ImpresoraTicketTipo> _asignacionRepo;
+    private readonly IRepository<Sucursal> _sucursalRepo;
     private readonly ILogger<ImpresoraService> _logger;
 
     public ImpresoraService(
         IRepository<Impresora> impresoraRepo,
         IRepository<TipoTicket> tipoTicketRepo,
         IRepository<ImpresoraTicketTipo> asignacionRepo,
+        IRepository<Sucursal> sucursalRepo,
         ILogger<ImpresoraService> logger)
     {
         _impresoraRepo = impresoraRepo;
         _tipoTicketRepo = tipoTicketRepo;
         _asignacionRepo = asignacionRepo;
+        _sucursalRepo = sucursalRepo;
         _logger = logger;
     }
 
@@ -59,6 +63,27 @@ public class ImpresoraService : IImpresoraService
                 {
                     Exitoso = false,
                     Mensaje = $"Tipo de ticket '{tipoTicketCodigo}' no configurado."
+                });
+                return resultados;
+            }
+
+            // 1.b Si la sucursal tiene activo el modo simulador, no se busca ni se envía
+            // a ninguna impresora física: se renderiza el ticket y se devuelve su contenido
+            // para que el frontend lo muestre en pantalla.
+            var sucursal = await _sucursalRepo.GetByIdAsync(sucursalId, ct);
+            if (sucursal?.ImpresionSimulada == true)
+            {
+                var contenidoSimulado = RenderizarTemplate(tipoTicket.TemplateContenido, comanda, datosExtra, tipoTicketCodigo);
+                _logger.LogInformation(
+                    "Modo simulador activo en sucursal {SucursalId}: ticket '{Codigo}' no enviado a impresora física.",
+                    sucursalId, tipoTicketCodigo);
+                resultados.Add(new ResultadoImpresion
+                {
+                    Exitoso = true,
+                    Mensaje = $"Ticket '{tipoTicketCodigo}' generado en modo simulador (sin impresora física).",
+                    ImpresoraUtilizada = "SIMULADOR",
+                    TicketContenido = contenidoSimulado,
+                    Simulado = true
                 });
                 return resultados;
             }
@@ -108,7 +133,7 @@ public class ImpresoraService : IImpresoraService
             }
 
             // 5. Renderizar el template
-            var contenidoTicket = RenderizarTemplate(tipoTicket.TemplateContenido, comanda, datosExtra);
+            var contenidoTicket = RenderizarTemplate(tipoTicket.TemplateContenido, comanda, datosExtra, tipoTicketCodigo);
 
             // 6. Enviar a cada impresora destino
             foreach (var impresora in impresorasDestino)
@@ -138,16 +163,38 @@ public class ImpresoraService : IImpresoraService
     /// <summary>
     /// Reemplaza los placeholders del template con los datos de la comanda.
     /// </summary>
+    /// <param name="tipoTicketCodigo">
+    /// Código del tipo de ticket ("Comanda", "FacturaA", "FacturaB", ...). Determina si los
+    /// ítems se listan uno por fila tal como se comandaron (comanda/cocina) o agrupados por
+    /// producto (factura): cada envío a cocina queda como su propia fila en el ticket de
+    /// comanda para reflejar el pedido real, pero el comprobante fiscal cobra por cantidad
+    /// total, así que ahí conviene mostrarlo consolidado.
+    /// </param>
     private static string RenderizarTemplate(
         string template,
         Comanda comanda,
-        Dictionary<string, string>? datosExtra)
+        Dictionary<string, string>? datosExtra,
+        string tipoTicketCodigo)
     {
         // Construir la lista de ítems como texto
         var itemsBuilder = new StringBuilder();
-        if (comanda.Items?.Any() == true)
+        var itemsAImprimir = comanda.Items?.Where(i => !i.Cancelado) ?? Enumerable.Empty<ComandaItem>();
+        var esFactura = tipoTicketCodigo.StartsWith("Factura", StringComparison.OrdinalIgnoreCase);
+
+        if (esFactura)
         {
-            foreach (var item in comanda.Items)
+            var agrupados = itemsAImprimir
+                .GroupBy(i => i.ProductoId)
+                .Select(g => new { Nombre = g.First().Producto?.Nombre ?? "Producto", Cantidad = g.Sum(i => i.Cantidad) });
+
+            foreach (var g in agrupados)
+            {
+                itemsBuilder.AppendLine($"  {g.Cantidad}x {g.Nombre}");
+            }
+        }
+        else
+        {
+            foreach (var item in itemsAImprimir)
             {
                 itemsBuilder.AppendLine($"  {item.Cantidad}x {item.Producto?.Nombre ?? "Producto"}");
                 if (!string.IsNullOrWhiteSpace(item.Notas))
@@ -157,7 +204,7 @@ public class ImpresoraService : IImpresoraService
             }
         }
 
-        var totalItems = comanda.Items?.Sum(i => i.Cantidad) ?? 0;
+        var totalItems = itemsAImprimir.Sum(i => i.Cantidad);
 
         // Reemplazar placeholders
         var resultado = template

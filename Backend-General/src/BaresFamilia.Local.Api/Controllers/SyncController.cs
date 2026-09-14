@@ -1,20 +1,22 @@
-using System.Threading;
-using System.Threading.Tasks;
-using BaresFamilia.Local.Api.Workers;
+using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BaresFamilia.Local.Api.Controllers;
 
+/// <summary>
+/// Endpoints de control manual del motor de sincronización de la sucursal.
+/// Flujo: SyncController → IMotorSincronizacionLocal → SincronizacionWorker.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class SyncController : ControllerBase
 {
-    private readonly SincronizacionWorker _worker;
+    private readonly IMotorSincronizacionLocal _motorSincronizacion;
 
-    public SyncController(SincronizacionWorker worker)
+    public SyncController(IMotorSincronizacionLocal motorSincronizacion)
     {
-        _worker = worker;
+        _motorSincronizacion = motorSincronizacion;
     }
 
     /// <summary>
@@ -25,11 +27,8 @@ public class SyncController : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> RunSync(CancellationToken ct)
     {
-        var started = await _worker.TriggerManualSyncAsync(ct);
-        if (!started)
-        {
+        if (!await _motorSincronizacion.DispararSincronizacionManualAsync(ct))
             return Conflict(new { message = "Ya hay un proceso de sincronización ejecutándose en este momento." });
-        }
 
         return Ok(new { message = "Sincronización manual iniciada con éxito." });
     }
@@ -39,9 +38,5 @@ public class SyncController : ControllerBase
     /// </summary>
     [HttpGet("logs")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult GetLogs()
-    {
-        var logs = LocalSyncLogStore.GetLogs();
-        return Ok(logs);
-    }
+    public IActionResult GetLogs() => Ok(_motorSincronizacion.GetRegistrosRecientes());
 }

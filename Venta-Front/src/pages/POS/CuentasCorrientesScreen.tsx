@@ -139,16 +139,14 @@ export default function CuentasCorrientesScreen() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-slate-950 overflow-hidden">
-      <header className="flex items-center gap-4 px-5 py-4 bg-surface-base border-b border-border-default flex-shrink-0">
-        <button onClick={() => navigate('/')} className="touch-btn p-3 rounded-[var(--radius-btn)] bg-slate-900 text-text-secondary hover:text-text-primary hover:bg-slate-850 border border-border-default">
-          <ArrowLeft className="w-5 h-5" />
+      <header className="flex items-center gap-3 px-3.5 py-2 min-h-[56px] bg-surface-base border-b border-border-default flex-shrink-0">
+        <button onClick={() => navigate('/')} className="touch-btn h-12 px-3 flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-surface-base text-text-primary hover:border-amber-500 hover:text-amber-500 border border-border-default text-[12.5px] font-medium min-h-0">
+          <ArrowLeft className="w-4 h-4" />
+          Mapa
         </button>
         <div>
-          <h1 className="text-lg font-bold text-text-primary flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-cyan-500" />
-            Cuentas Corrientes
-          </h1>
-          <p className="text-sm text-text-muted">Cobranza y liquidación de saldos de clientes — turno de {turnoActivo.usuarioNombre}</p>
+          <h1 className="text-[15px] font-semibold text-text-primary">Cuentas Corrientes</h1>
+          <p className="font-mono text-[11px] text-text-muted">Cobranza y liquidación de saldos — turno de {turnoActivo.usuarioNombre}</p>
         </div>
       </header>
 

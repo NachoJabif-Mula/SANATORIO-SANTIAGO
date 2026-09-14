@@ -1,3 +1,4 @@
+using BaresFamilia.Core.Models.Entities.Fiscal;
 using BaresFamilia.Core.Models.Entities.Inventario;
 using BaresFamilia.Core.Models.Entities.Transaccional;
 
@@ -51,8 +52,23 @@ public class Sucursal : BaseEntity
     /// </summary>
     public DateTime? FechaInicioActividades { get; set; }
 
+    /// <summary>
+    /// Si está activo, las comandas y comprobantes fiscales (AFIP simulado) no se envían
+    /// a impresoras físicas (red/USB): el ticket se genera igual pero solo se devuelve su
+    /// contenido para mostrarlo en pantalla. Útil para operar/testear sin hardware conectado.
+    /// </summary>
+    public bool ImpresionSimulada { get; set; }
+
     // Navegación
+
+    /// <summary>
+    /// Credenciales de acceso a los Web Services de ARCA propias de esta sucursal.
+    /// </summary>
+    public ConfiguracionFiscalSucursal? ConfiguracionFiscal { get; set; }
+
     public ICollection<Usuario> Usuarios { get; set; } = [];
+    public ICollection<Categoria> Categorias { get; set; } = [];
+    public ICollection<Producto> Productos { get; set; } = [];
     public ICollection<ProductoPrecio> ProductoPrecios { get; set; } = [];
     public ICollection<Mesa> Mesas { get; set; } = [];
     public ICollection<Caja> Cajas { get; set; } = [];

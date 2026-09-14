@@ -1,12 +1,15 @@
+using BaresFamilia.Core.Models.Contratos.Catalogos;
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Enums;
 using BaresFamilia.Core.Models.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BaresFamilia.Nube.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Policy = "Backoffice")]
 public class ImpresoraController : ControllerBase
 {
     private readonly IService<Impresora> _impresoraService;
@@ -156,20 +159,3 @@ public class ImpresoraController : ControllerBase
         });
     }
 }
-
-public record CrearImpresoraRequest(
-    Guid SucursalId,
-    string Nombre,
-    TipoDispositivoImpresora TipoDispositivo = TipoDispositivoImpresora.Comandera,
-    TipoConexionImpresora TipoConexion = TipoConexionImpresora.Red,
-    string Direccion = "",
-    int Puerto = 9100,
-    int Velocidad = 9600);
-
-public record ActualizarImpresoraRequest(
-    string Nombre,
-    TipoDispositivoImpresora TipoDispositivo = TipoDispositivoImpresora.Comandera,
-    TipoConexionImpresora TipoConexion = TipoConexionImpresora.Red,
-    string Direccion = "",
-    int Puerto = 9100,
-    int Velocidad = 9600);

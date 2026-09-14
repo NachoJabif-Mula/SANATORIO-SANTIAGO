@@ -1,9 +1,9 @@
+using BaresFamilia.Core.Models.Dtos.Cajas;
 using BaresFamilia.Core.Models.Entities.Transaccional;
-using BaresFamilia.Infrastructure.Data;
+using BaresFamilia.Core.Models.Interfaces;
 using BaresFamilia.Nube.Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace BaresFamilia.Nube.Api.Controllers;
 
@@ -12,14 +12,14 @@ namespace BaresFamilia.Nube.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "Backoffice")]
 public class CierreDiarioController : ControllerBase
 {
-    private readonly NubeContext _context;
+    private readonly ICierreDiarioService _cierreDiarioService;
 
-    public CierreDiarioController(NubeContext context)
+    public CierreDiarioController(ICierreDiarioService cierreDiarioService)
     {
-        _context = context;
+        _cierreDiarioService = cierreDiarioService;
     }
 
     /// <summary>
@@ -39,38 +39,10 @@ public class CierreDiarioController : ControllerBase
     {
         var sucId = ResolveSucursalId(sucursalId);
 
-        var query = _context.CierresDiarios
-            .Include(c => c.Caja)
-            .Include(c => c.UsuarioCierre)
-            .Where(c => c.IsActive);
-
-        if (sucId.HasValue)
-            query = query.Where(c => c.Caja.SucursalId == sucId.Value);
         // Los DateTime? de query string llegan con Kind=Unspecified; Npgsql exige Utc contra timestamptz.
-        if (desde.AsUtc() is DateTime desdeUtc)
-            query = query.Where(c => c.Fecha >= desdeUtc);
-        if (hasta.AsUtc() is DateTime hastaUtc)
-            query = query.Where(c => c.Fecha <= hastaUtc);
+        var cierres = await _cierreDiarioService.GetConDetallesAsync(sucId, desde.AsUtc(), hasta.AsUtc(), ct);
 
-        var cierres = await query
-            .OrderByDescending(c => c.Fecha)
-            .Select(c => new CierreDiarioDto
-            {
-                Id = c.Id,
-                CajaId = c.CajaId,
-                CajaNombre = c.Caja.Nombre,
-                Fecha = c.Fecha,
-                UsuarioCierreId = c.UsuarioCierreId,
-                UsuarioCierreNombre = c.UsuarioCierre.Nombre,
-                TotalVentas = c.TotalVentas,
-                TotalEgresos = c.TotalEgresos,
-                TotalNeto = c.TotalNeto,
-                Observaciones = c.Observaciones,
-                CreatedAt = c.CreatedAt
-            })
-            .ToListAsync(ct);
-
-        return Ok(cierres);
+        return Ok(cierres.Select(MapearResumen));
     }
 
     /// <summary>
@@ -81,48 +53,40 @@ public class CierreDiarioController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        var closure = await _context.CierresDiarios
-            .Include(c => c.Caja)
-            .Include(c => c.UsuarioCierre)
-            .FirstOrDefaultAsync(c => c.Id == id && c.IsActive, ct);
-
-        if (closure is null)
+        var cierre = await _cierreDiarioService.GetPorIdConDetallesAsync(id, ct);
+        if (cierre is null)
             return NotFound(new { message = "Cierre diario no encontrado." });
 
         return Ok(new CierreDiarioDetalleDto
         {
-            Id = closure.Id,
-            CajaId = closure.CajaId,
-            CajaNombre = closure.Caja.Nombre,
-            Fecha = closure.Fecha,
-            UsuarioCierreId = closure.UsuarioCierreId,
-            UsuarioCierreNombre = closure.UsuarioCierre.Nombre,
-            TotalVentas = closure.TotalVentas,
-            TotalEgresos = closure.TotalEgresos,
-            TotalNeto = closure.TotalNeto,
-            ResumenJson = closure.ResumenJson,
-            Observaciones = closure.Observaciones,
-            CreatedAt = closure.CreatedAt
+            Id = cierre.Id,
+            CajaId = cierre.CajaId,
+            CajaNombre = cierre.Caja.Nombre,
+            Fecha = cierre.Fecha,
+            UsuarioCierreId = cierre.UsuarioCierreId,
+            UsuarioCierreNombre = cierre.UsuarioCierre.Nombre,
+            TotalVentas = cierre.TotalVentas,
+            TotalEgresos = cierre.TotalEgresos,
+            TotalNeto = cierre.TotalNeto,
+            ResumenJson = cierre.ResumenJson,
+            Observaciones = cierre.Observaciones,
+            CreatedAt = cierre.CreatedAt
         });
     }
-}
 
-public class CierreDiarioDto
-{
-    public Guid Id { get; set; }
-    public Guid CajaId { get; set; }
-    public string CajaNombre { get; set; } = string.Empty;
-    public DateTime Fecha { get; set; }
-    public Guid UsuarioCierreId { get; set; }
-    public string UsuarioCierreNombre { get; set; } = string.Empty;
-    public decimal TotalVentas { get; set; }
-    public decimal TotalEgresos { get; set; }
-    public decimal TotalNeto { get; set; }
-    public string? Observaciones { get; set; }
-    public DateTime CreatedAt { get; set; }
-}
-
-public class CierreDiarioDetalleDto : CierreDiarioDto
-{
-    public string? ResumenJson { get; set; }
+    private static CierreDiarioDto MapearResumen(CierreDiario cierre)
+        => new()
+        {
+            Id = cierre.Id,
+            CajaId = cierre.CajaId,
+            CajaNombre = cierre.Caja.Nombre,
+            Fecha = cierre.Fecha,
+            UsuarioCierreId = cierre.UsuarioCierreId,
+            UsuarioCierreNombre = cierre.UsuarioCierre.Nombre,
+            TotalVentas = cierre.TotalVentas,
+            TotalEgresos = cierre.TotalEgresos,
+            TotalNeto = cierre.TotalNeto,
+            Observaciones = cierre.Observaciones,
+            CreatedAt = cierre.CreatedAt
+        };
 }

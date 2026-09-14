@@ -1,9 +1,14 @@
+using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 using BaresFamilia.Core.Models.Configuration;
+using BaresFamilia.Core.Models.Interfaces;
 using BaresFamilia.Infrastructure;
 using BaresFamilia.Infrastructure.Data;
+using BaresFamilia.Nube.Api.Extensions;
+using BaresFamilia.Nube.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -56,189 +61,89 @@ builder.Services
                 Encoding.UTF8.GetBytes(jwtSettings.SecretKey)),
             ClockSkew = TimeSpan.FromMinutes(1)
         };
+
+        // El JWT firmado solo prueba que el token es auténtico y no expiró;
+        // no sabe si el dispositivo fue revocado desde el Backoffice ni si una
+        // sesión de usuario con "mantener sesión iniciada" fue cerrada. Estas
+        // dos cosas viven en la base y hay que revalidarlas en cada request.
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var principal = context.Principal;
+                if (principal is null)
+                {
+                    context.Fail("Token inválido.");
+                    return;
+                }
+
+                var rawToken = context.HttpContext.Request.Headers.LeerTokenBearer();
+                if (string.IsNullOrWhiteSpace(rawToken))
+                    return;
+
+                var autenticacion = context.HttpContext.RequestServices
+                    .GetRequiredService<IAutenticacionBackofficeService>();
+
+                if (principal.FindFirstValue("tipo") == "m2m")
+                {
+                    // Token M2M de un POS: verificar que el dispositivo siga activo.
+                    // RevocarDispositivo() solo marca IsActive=false en la base; sin
+                    // este chequeo, el JWT M2M seguiría siendo válido hasta sus 365
+                    // días de vigencia aunque el dispositivo ya esté revocado.
+                    if (!Guid.TryParse(principal.FindFirstValue("dispositivo_id"), out var dispositivoId))
+                    {
+                        context.Fail("Token M2M sin dispositivo_id.");
+                        return;
+                    }
+
+                    if (!await autenticacion.EsDispositivoActivoAsync(dispositivoId))
+                        context.Fail("Dispositivo revocado o inexistente.");
+
+                    return;
+                }
+
+                // Token de usuario del Backoffice: si se emitió con "mantener sesión
+                // iniciada" existe una fila en SesionesUsuario. Las sesiones cortas
+                // (sin ese check) nunca se persisten, así que no encontrar fila es
+                // normal para ellas y no invalida el token.
+                if (!await autenticacion.ValidarSesionVigenteAsync(rawToken))
+                    context.Fail("Sesión revocada o expirada.");
+            }
+        };
     });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    // Los tokens M2M de dispositivos POS solo llevan el claim "tipo"="m2m" y
+    // nunca un rol de usuario: esta policy los excluye de los endpoints
+    // administrativos del Backoffice (catálogo, roles, empleados, fiscal, etc.),
+    // que antes aceptaban cualquier JWT válido con el [Authorize] a secas.
+    options.AddPolicy("Backoffice", policy =>
+        policy.RequireAssertion(ctx =>
+            ctx.User.Identity?.IsAuthenticated == true &&
+            ctx.User.FindFirstValue("tipo") != "m2m"));
+});
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("login", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
 
 var app = builder.Build();
 
 // ========================================
-// AUTO-MIGRATE: Crea/actualiza tablas al arrancar
+// AUTO-MIGRATE + SEED: la capa de Infrastructure prepara la base al arrancar
 // ========================================
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<NubeContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-
-    try
-    {
-        logger.LogInformation("Aplicando migraciones pendientes en la base de datos Nube...");
-        context.Database.Migrate();
-        logger.LogInformation("Migraciones aplicadas correctamente.");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "Error al aplicar migraciones. Intentando EnsureCreated como fallback...");
-        context.Database.EnsureCreated();
-        logger.LogWarning("Base de datos creada con EnsureCreated (sin historial de migraciones).");
-    }
-
-    // ── Seed: Tipos de Ticket por defecto ──────────────────────
-    if (!context.TiposTicket.Any())
-    {
-        logger.LogInformation("Creando tipos de ticket por defecto...");
-
-        context.TiposTicket.AddRange(
-            new BaresFamilia.Core.Models.Entities.Catalogo.TipoTicket
-            {
-                Codigo = "Comanda",
-                Nombre = "Comanda de Pedido",
-                TemplateContenido = """
-                    *** COCINA / BARRA ***
-                    ================================
-                      COMANDA: {{COMANDA_ID}}
-                      MESA: {{MESA}}
-                      MOZO: {{MOZO}}
-                      HORA: {{HORA}}
-                    ================================
-                    {{ITEMS}}
-                    ================================
-                      TOTAL ITEMS: {{TOTAL_ITEMS}}
-                    ================================
-                    """
-            },
-            new BaresFamilia.Core.Models.Entities.Catalogo.TipoTicket
-            {
-                Codigo = "FacturaA",
-                Nombre = "Factura A",
-                TemplateContenido = """
-                    ================================
-                           {{NEGOCIO}}
-                         FACTURA A
-                    ================================
-                    Comp: {{COMPROBANTE_NRO}}
-                    Fecha: {{FECHA}}  {{HORA}}
-                    ================================
-                    {{ITEMS}}
-                    ================================
-                    Subtotal:   ${{SUBTOTAL}}
-                    Descuento:  ${{DESCUENTO}}
-                    TOTAL:      ${{TOTAL}}
-                    ================================
-                    Metodo Pago: {{METODO_PAGO}}
-                    Monto Pagado: ${{MONTO_PAGADO}}
-                    ================================
-                    CAE: {{CAE}}
-                    Vto CAE: {{CAE_VTO}}
-                    ================================
-                    """
-            },
-            new BaresFamilia.Core.Models.Entities.Catalogo.TipoTicket
-            {
-                Codigo = "FacturaB",
-                Nombre = "Factura B",
-                TemplateContenido = """
-                    ================================
-                           {{NEGOCIO}}
-                         FACTURA B
-                    ================================
-                    Comp: {{COMPROBANTE_NRO}}
-                    Fecha: {{FECHA}}  {{HORA}}
-                    ================================
-                    {{ITEMS}}
-                    ================================
-                    Subtotal:   ${{SUBTOTAL}}
-                    Descuento:  ${{DESCUENTO}}
-                    TOTAL:      ${{TOTAL}}
-                    ================================
-                    Metodo Pago: {{METODO_PAGO}}
-                    Monto Pagado: ${{MONTO_PAGADO}}
-                    ================================
-                    CAE: {{CAE}}
-                    Vto CAE: {{CAE_VTO}}
-                    ================================
-                    """
-            }
-        );
-
-        context.SaveChanges();
-        logger.LogInformation("✓ 3 tipos de ticket creados: Comanda, FacturaA, FacturaB.");
-    }
-
-    // ── Seed: Método de Pago "Cuenta Corriente" ──────────────
-    if (!context.MetodosPago.Any(m => m.EsCuentaCorriente))
-    {
-        logger.LogInformation("Creando método de pago 'Cuenta Corriente'...");
-        context.MetodosPago.Add(new BaresFamilia.Core.Models.Entities.Catalogo.MetodoPago
-        {
-            Nombre = "Cuenta Corriente",
-            ComisionPorcentaje = 0m,
-            RequiereFacturaAfip = false,
-            EsCuentaCorriente = true,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        });
-        context.SaveChanges();
-        logger.LogInformation("✓ Método de pago 'Cuenta Corriente' creado.");
-    }
-
-    // ── Seed: Rol Administrador + Usuario Admin ──────────────
-    if (!context.Usuarios.Any(u => u.Email == "admin@baresfamilia.com"))
-    {
-        logger.LogInformation("Creando usuario administrador por defecto...");
-
-        // Crear sucursal central si no existe
-        var sucursalCentral = context.Set<BaresFamilia.Core.Models.Entities.Catalogo.Sucursal>()
-            .FirstOrDefault(s => s.Nombre == "Central");
-
-        if (sucursalCentral is null)
-        {
-            sucursalCentral = new BaresFamilia.Core.Models.Entities.Catalogo.Sucursal
-            {
-                Nombre = "Central",
-                Direccion = "Casa Matriz"
-            };
-            context.Set<BaresFamilia.Core.Models.Entities.Catalogo.Sucursal>().Add(sucursalCentral);
-            context.SaveChanges();
-        }
-
-        // Crear rol Administrador si no existe
-        var rolAdmin = context.Roles.FirstOrDefault(r => r.Nombre == "Administrador");
-        if (rolAdmin is null)
-        {
-            rolAdmin = new BaresFamilia.Core.Models.Entities.Catalogo.Rol
-            {
-                Nombre = "Administrador",
-                Permisos = new List<string>
-                {
-                    "dashboard.ver", "catalogo.ver", "catalogo.editar",
-                    "sucursales.ver", "sucursales.editar", "inventario.ver",
-                    "inventario.editar", "reportes.ver", "config.editar",
-                    "usuarios.ver", "usuarios.editar"
-                },
-                EsGlobal = true
-            };
-            context.Roles.Add(rolAdmin);
-            context.SaveChanges();
-        }
-
-        // Crear usuario admin con password hasheado
-        var admin = new BaresFamilia.Core.Models.Entities.Catalogo.Usuario
-        {
-            Nombre = "Administrador",
-            Email = "admin@baresfamilia.com",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Admin123!"),
-            PinAcceso = "0000",
-            RolId = rolAdmin.Id,
-            SucursalId = sucursalCentral.Id
-        };
-        context.Usuarios.Add(admin);
-        context.SaveChanges();
-
-        logger.LogInformation("✓ Usuario admin creado: admin@baresfamilia.com / Admin123!");
-    }
-}
+InicializadorNube.Inicializar(app.Services);
 
 // ========================================
 // PIPELINE HTTP
@@ -250,9 +155,14 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// Traduce las excepciones de dominio (regla de negocio / recurso inexistente)
+// al código HTTP correspondiente antes de que lleguen al cliente.
+app.UseManejadorExcepciones();
+
+app.UseCors();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseCors();
 app.MapControllers();
 
 app.Run();

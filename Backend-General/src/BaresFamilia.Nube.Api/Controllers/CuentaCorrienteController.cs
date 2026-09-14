@@ -1,36 +1,36 @@
-using BaresFamilia.Core.Models.Entities.CuentasCorrientes;
-using BaresFamilia.Infrastructure.Data;
+using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace BaresFamilia.Nube.Api.Controllers;
 
+/// <summary>
+/// Consulta consolidada de cuentas corrientes para el Backoffice.
+/// Flujo: CuentaCorrienteController → ICuentaCorrienteService → CuentaCorrienteService → I*Repository → *Repository.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "Backoffice")]
 public class CuentaCorrienteController : ControllerBase
 {
-    private readonly NubeContext _context;
-    private readonly ILogger<CuentaCorrienteController> _logger;
+    private readonly ICuentaCorrienteService _cuentaCorrienteService;
 
-    public CuentaCorrienteController(NubeContext context, ILogger<CuentaCorrienteController> logger)
+    public CuentaCorrienteController(ICuentaCorrienteService cuentaCorrienteService)
     {
-        _context = context;
-        _logger = logger;
+        _cuentaCorrienteService = cuentaCorrienteService;
     }
 
     /// <summary>Obtiene el historial de movimientos de un cliente (para reporte en Backoffice).</summary>
     [HttpGet("{clienteId:guid}/movimientos")]
     public async Task<IActionResult> GetMovimientos(Guid clienteId, CancellationToken ct)
     {
-        var cuenta = await _context.CuentasCorrientes.FirstOrDefaultAsync(c => c.ClienteId == clienteId, ct);
-        if (cuenta is null) return NotFound(new { message = "El cliente no tiene cuenta corriente." });
+        var resumen = await _cuentaCorrienteService.GetResumenPorClienteAsync(clienteId, ct);
 
-        var movimientos = await _context.Set<MovimientoCuentaCorriente>()
-            .Where(m => m.CuentaCorrienteId == cuenta.Id && m.IsActive)
-            .OrderByDescending(m => m.CreatedAt)
-            .Select(m => new {
+        return Ok(new
+        {
+            saldoActual = resumen.SaldoActual,
+            movimientos = resumen.Movimientos.Select(m => new
+            {
                 id = m.Id,
                 tipo = m.Tipo.ToString(),
                 monto = m.Monto,
@@ -38,10 +38,6 @@ public class CuentaCorrienteController : ControllerBase
                 comandaId = m.ComandaId,
                 fecha = m.CreatedAt
             })
-            .ToListAsync(ct);
-
-        _logger.LogInformation("Historial de movimientos obtenido para cliente {ClienteId}. Total movimientos: {Count}", clienteId, movimientos.Count);
-
-        return Ok(new { saldoActual = cuenta.SaldoActual, movimientos });
+        });
     }
 }

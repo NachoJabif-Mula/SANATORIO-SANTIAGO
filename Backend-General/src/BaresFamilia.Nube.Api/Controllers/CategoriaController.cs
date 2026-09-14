@@ -1,48 +1,50 @@
+using BaresFamilia.Core.Models.Contratos.Catalogos;
 using BaresFamilia.Core.Models.Entities.Catalogo;
-using BaresFamilia.Infrastructure.Data;
+using BaresFamilia.Core.Models.Interfaces;
+using BaresFamilia.Nube.Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace BaresFamilia.Nube.Api.Controllers;
 
 /// <summary>
 /// Controlador para el ABM y sincronización de Categorías.
+/// Flujo: CategoriaController → ICategoriaService → CategoriaService → ICategoriaRepository → CategoriaRepository.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
 public class CategoriaController : ControllerBase
 {
-    private readonly NubeContext _context;
+    private readonly ICategoriaService _categoriaService;
+    private readonly IMonitorSincronizacion _monitorSincronizacion;
 
-    public CategoriaController(NubeContext context)
+    public CategoriaController(ICategoriaService categoriaService, IMonitorSincronizacion monitorSincronizacion)
     {
-        _context = context;
+        _categoriaService = categoriaService;
+        _monitorSincronizacion = monitorSincronizacion;
     }
 
     /// <summary>
-    /// Obtiene las categorías. Si includeInactive es true, devuelve todas (activas e inactivas) para sincronización.
+    /// Obtiene las categorías de una sucursal. Un usuario no-global (o un token M2M
+    /// de POS) solo ve las de su propia sucursal, sin importar lo que pida por query;
+    /// un usuario global puede pedir una sucursal puntual o, si no especifica ninguna,
+    /// ve el catálogo de todas (vista consolidada). Si includeInactive es true, incluye
+    /// también las desactivadas (usado por la sincronización).
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(IEnumerable<Categoria>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAll([FromQuery] bool includeInactive = false, CancellationToken ct = default)
+    public async Task<IActionResult> GetAll([FromQuery] bool includeInactive = false, [FromQuery] Guid? sucursalId = null, CancellationToken ct = default)
     {
-        var sucursalIdClaim = User.FindFirst("sucursal_id")?.Value;
-        if (!string.IsNullOrEmpty(sucursalIdClaim) && Guid.TryParse(sucursalIdClaim, out var sucursalId))
+        var sucId = User.IsGlobal() ? sucursalId : User.GetSucursalId();
+
+        if (sucId.HasValue)
         {
-            SyncManagerStore.RecordPull(sucursalId, "config"); // Marcamos actividad de pull para la sucursal
+            _monitorSincronizacion.RegistrarPull(sucId.Value, TipoPull.Config); // Marcamos actividad de pull para la sucursal
         }
 
-        IQueryable<Categoria> query = _context.Categorias;
-
-        if (!includeInactive)
-        {
-            query = query.Where(c => c.IsActive);
-        }
-
-        var categorias = await query.OrderBy(c => c.OrdenVisual).ToListAsync(ct);
+        var categorias = await _categoriaService.GetPorSucursalAsync(sucId, includeInactive, ct);
         return Ok(categorias);
     }
 
@@ -54,62 +56,67 @@ public class CategoriaController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
-        var categoria = await _context.Categorias.FirstOrDefaultAsync(c => c.Id == id && c.IsActive, ct);
+        var categoria = await _categoriaService.GetByIdAsync(id, ct);
         if (categoria is null)
             return NotFound(new { message = $"Categoría con ID '{id}' no encontrada." });
+
+        if (!PuedeAcceder(categoria))
+            return Forbid();
 
         return Ok(categoria);
     }
 
     /// <summary>
-    /// Crea una nueva categoría.
+    /// Crea una nueva categoría en una sucursal. Un usuario no-global siempre crea
+    /// en su propia sucursal, sin importar lo que envíe en el request.
     /// </summary>
     [HttpPost]
+    [Authorize(Policy = "Backoffice")]
     [ProducesResponseType(typeof(Categoria), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateCategoriaRequest request, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.Nombre))
-            return BadRequest(new { message = "El nombre de la categoría es obligatorio." });
-
-        var categoria = new Categoria
+        var sucursalId = request.SucursalId;
+        if (!User.IsGlobal())
         {
-            Nombre = request.Nombre.Trim(),
-            OrdenVisual = request.OrdenVisual,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
+            var propiaSucursal = User.GetSucursalId();
+            if (propiaSucursal is null)
+                return Forbid();
+            sucursalId = propiaSucursal.Value;
+        }
 
-        _context.Categorias.Add(categoria);
-        await _context.SaveChangesAsync(ct);
+        var categoria = await _categoriaService.CrearAsync(new Categoria
+        {
+            SucursalId = sucursalId,
+            Nombre = request.Nombre,
+            OrdenVisual = request.OrdenVisual
+        }, ct);
 
         return CreatedAtAction(nameof(GetById), new { id = categoria.Id }, categoria);
     }
 
     /// <summary>
-    /// Actualiza una categoría existente.
+    /// Actualiza una categoría existente. La sucursal dueña no se puede reasignar
+    /// desde acá (si hace falta mover un producto/categoría de sucursal, se recrea).
     /// </summary>
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = "Backoffice")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateCategoriaRequest request, CancellationToken ct)
     {
-        var categoria = await _context.Categorias.FirstOrDefaultAsync(c => c.Id == id && c.IsActive, ct);
+        var categoria = await _categoriaService.GetByIdAsync(id, ct);
         if (categoria is null)
             return NotFound(new { message = $"Categoría con ID '{id}' no encontrada." });
 
-        if (string.IsNullOrWhiteSpace(request.Nombre))
-            return BadRequest(new { message = "El nombre de la categoría es obligatorio." });
+        if (!PuedeAcceder(categoria))
+            return Forbid();
 
-        categoria.Nombre = request.Nombre.Trim();
+        categoria.Nombre = request.Nombre;
         categoria.OrdenVisual = request.OrdenVisual;
-        categoria.UpdatedAt = DateTime.UtcNow;
 
-        _context.Categorias.Update(categoria);
-        await _context.SaveChangesAsync(ct);
-
+        await _categoriaService.ActualizarAsync(categoria, ct);
         return NoContent();
     }
 
@@ -117,23 +124,25 @@ public class CategoriaController : ControllerBase
     /// Desactiva una categoría (borrado lógico).
     /// </summary>
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = "Backoffice")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        var categoria = await _context.Categorias.FirstOrDefaultAsync(c => c.Id == id && c.IsActive, ct);
+        var categoria = await _categoriaService.GetByIdAsync(id, ct);
         if (categoria is null)
             return NotFound(new { message = $"Categoría con ID '{id}' no encontrada." });
 
-        categoria.IsActive = false;
-        categoria.UpdatedAt = DateTime.UtcNow;
+        if (!PuedeAcceder(categoria))
+            return Forbid();
 
-        _context.Categorias.Update(categoria);
-        await _context.SaveChangesAsync(ct);
-
+        await _categoriaService.DeleteAsync(id, ct);
         return NoContent();
     }
-}
 
-public record CreateCategoriaRequest(string Nombre, int OrdenVisual);
-public record UpdateCategoriaRequest(string Nombre, int OrdenVisual);
+    /// <summary>
+    /// Un usuario global ve cualquier sucursal; el resto solo la propia.
+    /// </summary>
+    private bool PuedeAcceder(Categoria categoria)
+        => User.IsGlobal() || categoria.SucursalId == User.GetSucursalId();
+}

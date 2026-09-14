@@ -1,22 +1,21 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Minus, Trash2, ShoppingCart, CreditCard, Receipt, X, Send, Ban } from 'lucide-react';
+import { Plus, Minus, Trash2, ShoppingCart, CreditCard, Receipt, Send, Ban } from 'lucide-react';
 import { useComanda, useAuth } from '@/contexts/AppContext';
 import { useCaja } from '@/contexts/CajaContext';
 import type { ItemComanda } from '@/common/types';
 import api from '@/services/api';
 import ModalCobro from '@/common/components/POS/ModalCobro';
 import { ModalAnulacion } from '@/common/components/POS/ModalAnulacion';
+import { TicketModal } from '@/common/components/POS/TicketModal';
+import { isGuid } from '@/common/utils/guid';
 
 function formatARS(monto: number): string {
   return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(monto);
 }
 
-const isGuid = (val: string | null | undefined) =>
-  val ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val) : false;
-
 export default function ComandaPanel() {
-  const { items, comandaId, total, cantidadItems, incrementar, decrementar, quitarItem, limpiarComanda, marcarItemCancelado } = useComanda();
+  const { items, comandaId, total, cantidadItems, huboModificaciones, incrementar, decrementar, quitarItem, limpiarComanda, marcarItemCancelado } = useComanda();
   const { usuario, logout, tienePermiso } = useAuth();
   const { turnoActivo } = useCaja();
   const navigate = useNavigate();
@@ -29,6 +28,7 @@ export default function ComandaPanel() {
   const [successOverlayMessage, setSuccessOverlayMessage] = useState('');
   const [itemAAnular, setItemAAnular] = useState<ItemComanda | null>(null);
   const [showModalAnularComanda, setShowModalAnularComanda] = useState(false);
+  const [ticketModal, setTicketModal] = useState<{ titulo: string; contenido: string; onCerrar: () => void } | null>(null);
 
   const puedeAnular = !!comandaId && tienePermiso('pos.anular');
 
@@ -108,8 +108,9 @@ export default function ComandaPanel() {
         precioUnitario: i.producto.precio
       }));
 
+      let comandaRes;
       if (comandaId) {
-        await api.put(`/comanda/${comandaId}`, {
+        comandaRes = await api.put(`/comanda/${comandaId}`, {
           usuarioId: usuario.id,
           subtotal: total,
           descuento: 0,
@@ -117,7 +118,7 @@ export default function ComandaPanel() {
           items: mappedItems
         });
       } else {
-        await api.post('/comanda', {
+        comandaRes = await api.post('/comanda', {
           tipoVentaId,
           mesaId,
           clienteId: clienteAsociado?.id ?? null,
@@ -129,7 +130,19 @@ export default function ComandaPanel() {
         });
       }
 
-      procesarCobro('¡Pedido Enviado a Cocina!');
+      const impresion = comandaRes.data?.ultimaImpresion;
+      if (impresion?.simulado && impresion?.ticketContenido) {
+        setTicketModal({
+          titulo: 'Ticket de Comanda',
+          contenido: impresion.ticketContenido,
+          onCerrar: () => {
+            setTicketModal(null);
+            procesarCobro('¡Pedido Enviado a Cocina!');
+          }
+        });
+      } else {
+        procesarCobro('¡Pedido Enviado a Cocina!');
+      }
     } catch (err: any) {
       console.error('Error al enviar la comanda:', err);
       const msg = err?.response?.data?.message || err.message || 'Error de conexión';
@@ -196,7 +209,21 @@ export default function ComandaPanel() {
       });
 
       setShowModalCobro(false);
-      procesarCobro(cobrarRes.data.facturaAfipEmitida ? '¡Comprobante AFIP Emitido!' : '¡Cobro Registrado!');
+
+      const resultadoCobro = cobrarRes.data;
+      const mensajeFinal = resultadoCobro.facturaAfipEmitida ? '¡Comprobante AFIP Emitido!' : '¡Cobro Registrado!';
+      if (resultadoCobro.simulado && resultadoCobro.ordenImpresionUsb) {
+        setTicketModal({
+          titulo: 'Comprobante Fiscal (AFIP simulado)',
+          contenido: resultadoCobro.ordenImpresionUsb,
+          onCerrar: () => {
+            setTicketModal(null);
+            procesarCobro(mensajeFinal);
+          }
+        });
+      } else {
+        procesarCobro(mensajeFinal);
+      }
     } catch (err: any) {
       console.error('Error al procesar el cobro:', err);
       const msg = err?.response?.data?.message || err.message || 'Error de conexión';
@@ -210,26 +237,14 @@ export default function ComandaPanel() {
       <div className="flex flex-col h-full bg-surface-base border-l border-border-default">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border-default">
+          <span className="mono-label">Ticket</span>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-[var(--radius-btn)] bg-slate-850 border border-border-default flex items-center justify-center">
-              <Receipt className="w-4 h-4 text-text-secondary" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-text-primary tracking-tight">Comanda</h2>
-              <p className="text-xs text-text-muted">{cantidadItems} {cantidadItems === 1 ? 'ítem' : 'ítems'}</p>
-            </div>
+            <span className="font-mono text-[11px] text-text-muted">{cantidadItems} {cantidadItems === 1 ? 'ítem' : 'ítems'}</span>
           </div>
-          {items.length > 0 && (
-            <button id="btn-limpiar-comanda" onClick={limpiarComanda}
-              className="touch-btn p-2.5 rounded-[var(--radius-btn)] bg-slate-900 text-text-muted hover:text-danger-400 hover:bg-danger-500/5 border border-border-default transition-all duration-200"
-              title="Limpiar comanda">
-              <X className="w-4 h-4" />
-            </button>
-          )}
         </div>
 
         {/* Items */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-1">
+        <div className="flex-1 overflow-y-auto p-2">
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-text-muted">
               <ShoppingCart className="w-10 h-10 mb-3 opacity-15" />
@@ -237,111 +252,124 @@ export default function ComandaPanel() {
               <p className="text-xs mt-0.5 text-center text-text-muted/80">Seleccione productos del catálogo</p>
             </div>
           ) : (
-            items.map((item: ItemComanda) => (
-              <div key={item.id} className={`flex items-center gap-3 py-2.5 border-b animate-fade-in ${
-                item.cancelado ? 'border-danger-500/20 opacity-70' : 'border-border-default/40'
+            items.map((item: ItemComanda) => {
+              const yaComandado = isGuid(item.id) && !!comandaId;
+              return (
+              <div key={item.id} className={`flex flex-col gap-2 p-3 border-b animate-fade-in ${
+                item.cancelado ? 'border-danger-500/20 opacity-70' : 'border-border-default'
               }`}>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-semibold truncate ${item.cancelado ? 'text-danger-400 line-through' : 'text-text-primary'}`}>
+                <div className="flex items-start gap-2">
+                  <span className={`flex-1 min-w-0 text-[15px] font-medium leading-tight ${item.cancelado ? 'text-danger-500 line-through' : 'text-text-primary'}`}>
                     {item.producto.nombre}
-                  </p>
+                  </span>
+                  <span className={`font-mono text-[15px] font-semibold ${item.cancelado ? 'text-danger-500 line-through' : 'text-text-primary'}`}>
+                    {formatARS(item.subtotal)}
+                  </span>
+                </div>
+                {item.cancelado && (
+                  <div className="text-[11.5px] text-danger-500 font-semibold uppercase tracking-wide">Anulado</div>
+                )}
+
+                <div className="flex items-center gap-1.5">
                   {item.cancelado ? (
-                    <p className="text-[11px] text-danger-400 font-bold uppercase tracking-wider mt-0.5">Anulado</p>
+                    <span className="font-mono text-[13px] text-text-muted">{item.cantidad} un.</span>
+                  ) : yaComandado ? (
+                    // Ítem ya comandado: la cantidad es fija (ya está en base de datos).
+                    // Para pedir más de este producto se agrega desde el catálogo, lo que
+                    // genera una fila nueva en el ticket en vez de sumarse acá.
+                    <span className="min-w-[30px] text-center font-mono text-[15px] font-semibold text-text-primary">{item.cantidad}</span>
                   ) : (
-                    <p className="text-[11px] text-text-muted mt-0.5">{formatARS(item.producto.precio)} c/u</p>
+                    <>
+                      <button id={`btn-dec-${item.id}`} onClick={() => decrementar(item.id)}
+                        className="touch-btn w-9 h-9 bg-surface-overlay border border-border-default rounded-[var(--radius-btn)] flex items-center justify-center min-h-0 min-w-0 text-text-primary">
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+                      <span className="min-w-[30px] text-center font-mono text-[15px] font-semibold text-text-primary">{item.cantidad}</span>
+                      <button id={`btn-inc-${item.id}`} onClick={() => incrementar(item.id)}
+                        className="touch-btn w-9 h-9 bg-surface-overlay border border-border-default rounded-[var(--radius-btn)] flex items-center justify-center min-h-0 min-w-0 text-text-primary">
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </>
+                  )}
+
+                  <div className="flex-1" />
+
+                  {item.cancelado ? (
+                    <span className="w-8 h-8 flex items-center justify-center" title="Ítem anulado">
+                      <Ban className="w-3.5 h-3.5 text-danger-500" />
+                    </span>
+                  ) : yaComandado ? (
+                    puedeAnular && (
+                      <button id={`btn-anular-${item.id}`} onClick={() => setItemAAnular(item)}
+                        title="Anular ítem (ya comandado)"
+                        className="touch-btn h-8 px-3 rounded-[var(--radius-btn)] border border-border-default text-[11.5px] font-semibold text-text-muted hover:border-danger-500 hover:text-danger-500 min-h-0">
+                        Quitar
+                      </button>
+                    )
+                  ) : (
+                    <button id={`btn-del-${item.id}`} onClick={() => quitarItem(item.id)}
+                      className="touch-btn h-8 px-3 rounded-[var(--radius-btn)] border border-border-default text-[11.5px] font-semibold text-text-muted hover:border-danger-500 hover:text-danger-500 min-h-0 flex items-center gap-1">
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Quitar
+                    </button>
                   )}
                 </div>
-
-                {item.cancelado ? (
-                  <span className="w-6 text-center text-xs font-bold text-danger-400 tabular-nums">{item.cantidad}</span>
-                ) : (
-                  /* Controles de Cantidad +/- */
-                  <div className="flex items-center gap-1 bg-slate-950/40 p-0.5 rounded-md border border-border-subtle/50">
-                    <button id={`btn-dec-${item.id}`} onClick={() => decrementar(item.id)}
-                      className="touch-btn w-6 h-6 rounded bg-slate-900 text-text-secondary hover:text-text-primary hover:bg-slate-800 flex items-center justify-center min-h-[24px] min-w-[24px] border border-border-default/40 active:scale-90 transition-all">
-                      <Minus className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="w-6 text-center text-xs font-bold text-text-primary tabular-nums">{item.cantidad}</span>
-                    <button id={`btn-inc-${item.id}`} onClick={() => incrementar(item.id)}
-                      className="touch-btn w-6 h-6 rounded bg-slate-900 text-text-secondary hover:text-text-primary hover:bg-slate-800 flex items-center justify-center min-h-[24px] min-w-[24px] border border-border-default/40 active:scale-90 transition-all">
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-
-                <span className={`text-xs font-bold w-16 text-right tabular-nums ${item.cancelado ? 'text-danger-400 line-through' : 'text-text-primary'}`}>
-                  {formatARS(item.subtotal)}
-                </span>
-
-                {item.cancelado ? (
-                  <span className="w-7 h-7 flex items-center justify-center" title="Ítem anulado">
-                    <Ban className="w-3.5 h-3.5 text-danger-400" />
-                  </span>
-                ) : isGuid(item.id) && comandaId ? (
-                  puedeAnular && (
-                    <button id={`btn-anular-${item.id}`} onClick={() => setItemAAnular(item)}
-                      title="Anular ítem (ya comandado)"
-                      className="touch-btn w-7 h-7 rounded text-text-muted hover:text-danger-500 hover:bg-danger-500/5 flex items-center justify-center min-h-[28px] min-w-[28px] transition-colors duration-150">
-                      <Ban className="w-3.5 h-3.5" />
-                    </button>
-                  )
-                ) : (
-                  <button id={`btn-del-${item.id}`} onClick={() => quitarItem(item.id)}
-                    className="touch-btn w-7 h-7 rounded text-text-muted hover:text-danger-500 hover:bg-danger-500/5 flex items-center justify-center min-h-[28px] min-w-[28px] transition-colors duration-150">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
               </div>
-            ))
+              );
+            })
           )}
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border-default p-4 bg-slate-950/20 space-y-3">
-          <div className="flex items-center justify-between py-1">
-            <span className="text-xs font-semibold uppercase tracking-wide text-text-muted">Total a Pagar</span>
-            <span className="text-2xl font-bold text-text-primary tabular-nums">{formatARS(total)}</span>
+        <div className="border-t border-border-default p-4 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-text-muted">Subtotal</span>
+            <span className="font-mono text-xs text-text-muted">{formatARS(total)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[13px] font-semibold text-text-primary">Total</span>
+            <span className="font-mono text-2xl font-semibold tracking-tight text-text-primary">{formatARS(total)}</span>
           </div>
 
           <div className={`grid ${usuario && (usuario.rol === 'mozo' || usuario.rol === 'moso') ? 'grid-cols-1' : 'grid-cols-2'} gap-2 mt-1`}>
-            <button id="btn-enviar" onClick={handleEnviar} disabled={items.length === 0 || cobrado || enviando}
-              className={`touch-btn flex items-center justify-center gap-1.5 py-3 rounded-[var(--radius-btn)] text-sm font-bold transition-all duration-150 min-h-[46px] border ${
-                items.length === 0 || cobrado || enviando
-                  ? 'bg-slate-900/30 text-text-muted border-border-default/30 cursor-not-allowed'
-                  : 'bg-slate-900 text-text-secondary hover:bg-slate-850 hover:text-text-primary border-border-default active:scale-[0.98]'
+            <button id="btn-enviar" onClick={handleEnviar} disabled={items.length === 0 || !huboModificaciones || cobrado || enviando}
+              className={`touch-btn flex items-center justify-center gap-1.5 h-[60px] rounded-[var(--radius-btn)] text-[15px] font-semibold min-h-0 border ${
+                items.length === 0 || !huboModificaciones || cobrado || enviando
+                  ? 'bg-surface-overlay text-text-muted border-border-default cursor-not-allowed'
+                  : 'bg-surface-overlay text-text-primary border-border-default hover:border-amber-500 hover:text-amber-500'
               }`}>
               <Send className="w-4 h-4" />
-              {enviando ? 'Enviando...' : 'Enviar'}
+              {enviando ? 'Enviando...' : 'Comandar'}
             </button>
 
             {!(usuario && (usuario.rol === 'mozo' || usuario.rol === 'moso')) && (
               <button id="btn-cobrar" onClick={handleCobrar} disabled={items.length === 0 || cobrado || enviando}
-                className={`touch-btn flex items-center justify-center gap-2 py-3 rounded-[var(--radius-btn)] text-sm font-bold transition-all duration-150 min-h-[46px] ${
+                className={`touch-btn flex items-center justify-center gap-2 h-[60px] rounded-[var(--radius-btn)] text-[15px] font-semibold min-h-0 border ${
                   cobrado
-                    ? 'bg-success-600 text-white col-span-2 shadow-sm'
+                    ? 'bg-success-500 text-white border-success-500 col-span-2'
                     : items.length === 0 || enviando
-                    ? 'bg-slate-900/30 text-text-muted border border-border-default/30 cursor-not-allowed'
-                    : 'bg-amber-500 text-slate-950 hover:bg-amber-400 shadow-sm active:scale-[0.98]'
+                    ? 'bg-surface-overlay text-text-muted border-border-default cursor-not-allowed'
+                    : 'bg-amber-500 text-white border-amber-500 hover:bg-amber-600'
                 }`}>
-                {cobrado ? (<><Receipt className="w-5 h-5" />{mensajeCobro}</>) : (<><CreditCard className="w-5 h-5" />Cobrar</>)}
+                {cobrado ? (<><Receipt className="w-5 h-5" />{mensajeCobro}</>) : (<><CreditCard className="w-5 h-5" />Rendir pedido</>)}
               </button>
             )}
           </div>
           {puedeAnular && (
             <button id="btn-anular-comanda" onClick={() => setShowModalAnularComanda(true)} disabled={cobrado || enviando}
-              className="touch-btn w-full flex items-center justify-center gap-1.5 py-2.5 rounded-[var(--radius-btn)] text-xs font-bold transition-all duration-150 min-h-[38px] border border-danger-500/30 text-danger-400 hover:bg-danger-500/10 disabled:opacity-40 disabled:cursor-not-allowed">
+              className="touch-btn w-full flex items-center justify-center gap-1.5 h-[48px] rounded-[var(--radius-btn)] text-[13px] font-semibold min-h-0 border border-border-default text-danger-500 hover:border-danger-500 disabled:opacity-40 disabled:cursor-not-allowed">
               <Ban className="w-4 h-4" />
-              Anular Comanda
+              Anular orden
             </button>
           )}
           {usuario && (
-            <p className="text-center text-[10px] text-text-muted pt-1 flex items-center justify-center gap-1.5">
+            <p className="text-center text-[10px] text-text-muted pt-1 flex items-center justify-center gap-1.5 font-mono">
               <span>Operador: <strong className="font-semibold text-text-secondary">{usuario.nombre}</strong></span>
-              <span className="w-1 h-1 rounded-full bg-slate-700" />
+              <span className="w-1 h-1 rounded-full bg-border-strong" />
               <span className={`px-1 rounded-[3px] font-bold uppercase tracking-wider text-[8px] border ${
-                usuario.rol === 'gerente' 
-                  ? 'bg-success-500/5 text-success-400 border-success-500/20' 
-                  : 'bg-info-500/5 text-info-400 border-info-500/20'
+                usuario.rol === 'gerente'
+                  ? 'text-success-500 border-success-500/40'
+                  : 'text-info-500 border-info-500/40'
               }`}>{usuario.rol}</span>
             </p>
           )}
@@ -371,6 +399,14 @@ export default function ComandaPanel() {
           descripcion="Se anulará la comanda completa y se liberará la mesa."
           onConfirmar={handleAnularComanda}
           onCancelar={() => setShowModalAnularComanda(false)}
+        />
+      )}
+
+      {ticketModal && (
+        <TicketModal
+          titulo={ticketModal.titulo}
+          contenido={ticketModal.contenido}
+          onCerrar={ticketModal.onCerrar}
         />
       )}
 

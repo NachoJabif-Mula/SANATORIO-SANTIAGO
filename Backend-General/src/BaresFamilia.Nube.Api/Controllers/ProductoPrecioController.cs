@@ -1,146 +1,77 @@
-using BaresFamilia.Core.Models.Entities.Catalogo;
-using BaresFamilia.Infrastructure.Data;
+using BaresFamilia.Core.Models.Contratos.Catalogos;
+using BaresFamilia.Core.Models.Dtos.Catalogos;
+using BaresFamilia.Core.Models.Interfaces;
 using BaresFamilia.Nube.Api.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace BaresFamilia.Nube.Api.Controllers;
 
 /// <summary>
 /// Controlador para gestionar los precios de los productos segmentados por sucursal y tipo de venta.
+/// Flujo: ProductoPrecioController → IProductoPrecioService → ProductoPrecioService → IProductoPrecioRepository → ProductoPrecioRepository.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
 public class ProductoPrecioController : ControllerBase
 {
-    private readonly NubeContext _context;
+    private readonly IProductoPrecioService _productoPrecioService;
+    private readonly IProductoService _productoService;
+    private readonly IMonitorSincronizacion _monitorSincronizacion;
 
-    public ProductoPrecioController(NubeContext context)
+    public ProductoPrecioController(
+        IProductoPrecioService productoPrecioService,
+        IProductoService productoService,
+        IMonitorSincronizacion monitorSincronizacion)
     {
-        _context = context;
+        _productoPrecioService = productoPrecioService;
+        _productoService = productoService;
+        _monitorSincronizacion = monitorSincronizacion;
     }
 
     /// <summary>
-    /// Obtiene todos los precios configurados para un producto.
+    /// Obtiene todos los precios configurados para un producto (siempre de su propia
+    /// sucursal: un producto vive en una sola sucursal, y su precio también).
     /// </summary>
     [HttpGet("producto/{productoId:guid}")]
     [ProducesResponseType(typeof(IEnumerable<ProductoPrecioDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetByProducto(Guid productoId, CancellationToken ct)
     {
-        var precios = await _context.ProductoPrecios
-            .Where(p => p.ProductoId == productoId && p.IsActive)
-            .Select(p => new ProductoPrecioDto(
-                p.Id,
-                p.ProductoId,
-                p.SucursalId,
-                p.TipoVentaId,
-                p.PrecioVenta,
-                p.IsActive
-            ))
-            .ToListAsync(ct);
+        var producto = await _productoService.GetPorIdIncluyendoInactivosAsync(productoId, ct);
+        if (producto is null)
+            return NotFound(new { message = $"Producto con ID '{productoId}' no encontrado." });
 
-        return Ok(precios);
+        if (!User.IsGlobal() && producto.SucursalId != User.GetSucursalId())
+            return Forbid();
+
+        var precios = await _productoPrecioService.GetActivosPorProductoAsync(productoId, ct);
+        return Ok(precios.Select(ProductoPrecioDto.Desde));
     }
 
     /// <summary>
-    /// Guarda o actualiza en bloque los precios de un producto (upsert en lote).
+    /// Guarda o actualiza en bloque los precios de un producto (upsert en lote), uno
+    /// por tipo de venta. La sucursal del precio nunca se pide en el request: siempre
+    /// es la del producto (un producto vive en una sola sucursal, y su precio también).
     /// Si un precio previo no está en el lote enviado, se desactiva (borrado lógico).
     /// </summary>
     [HttpPut("producto/{productoId:guid}")]
+    [Authorize(Policy = "Backoffice")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> UpdatePreciosBatch(Guid productoId, [FromBody] List<UpdateProductoPrecioRequest> request, CancellationToken ct)
     {
-        // Un usuario no-global solo puede tocar precios de su propia sucursal
-        if (!User.IsGlobal())
-        {
-            var propiaSucursal = User.GetSucursalId();
-            if (propiaSucursal is null || request.Any(r => r.SucursalId != propiaSucursal.Value))
-                return Forbid();
-        }
-
-        // Validar que el producto exista
-        var productoExiste = await _context.Productos.AnyAsync(p => p.Id == productoId && p.IsActive, ct);
-        if (!productoExiste)
+        var producto = await _productoService.GetByIdAsync(productoId, ct);
+        if (producto is null)
             return BadRequest(new { message = $"El producto con ID '{productoId}' no existe o está inactivo." });
 
-        // Obtener todos los precios existentes (activos e inactivos) del producto
-        var preciosExistentes = await _context.ProductoPrecios
-            .Where(p => p.ProductoId == productoId)
-            .ToListAsync(ct);
+        // Un usuario no-global solo puede tocar precios de productos de su propia sucursal
+        if (!User.IsGlobal() && producto.SucursalId != User.GetSucursalId())
+            return Forbid();
 
-        // Crear mapa para búsqueda rápida
-        var mapaExistente = preciosExistentes
-            .ToDictionary(p => (p.SucursalId, p.TipoVentaId));
-
-        var idsProcesados = new HashSet<Guid>();
-
-        using var transaction = await _context.Database.BeginTransactionAsync(ct);
-        try
-        {
-            foreach (var req in request)
-            {
-                // Validar que la sucursal y tipo de venta existan
-                var sucursalExiste = await _context.Sucursales.AnyAsync(s => s.Id == req.SucursalId, ct);
-                var tipoVentaExiste = await _context.TiposVenta.AnyAsync(t => t.Id == req.TipoVentaId, ct);
-
-                if (!sucursalExiste || !tipoVentaExiste)
-                    continue; // Saltar entradas inválidas para mantener integridad
-
-                var clave = (req.SucursalId, req.TipoVentaId);
-                if (mapaExistente.TryGetValue(clave, out var precioDb))
-                {
-                    // Actualizar precio existente
-                    precioDb.PrecioVenta = req.PrecioVenta;
-                    precioDb.IsActive = true;
-                    precioDb.UpdatedAt = DateTime.UtcNow;
-                    _context.ProductoPrecios.Update(precioDb);
-                    idsProcesados.Add(precioDb.Id);
-                }
-                else
-                {
-                    // Crear nuevo precio
-                    var nuevoPrecio = new ProductoPrecio
-                    {
-                        Id = Guid.NewGuid(),
-                        ProductoId = productoId,
-                        SucursalId = req.SucursalId,
-                        TipoVentaId = req.TipoVentaId,
-                        PrecioVenta = req.PrecioVenta,
-                        IsActive = true,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-                    _context.ProductoPrecios.Add(nuevoPrecio);
-                    idsProcesados.Add(nuevoPrecio.Id);
-                }
-            }
-
-            // Desactivar precios que no se incluyeron en la lista request, pero solo
-            // dentro de las sucursales realmente enviadas en este guardado (para no
-            // afectar precios de otras sucursales que el caller no está gestionando).
-            var sucursalesEnRequest = request.Select(r => r.SucursalId).ToHashSet();
-            foreach (var precioDb in preciosExistentes)
-            {
-                if (!idsProcesados.Contains(precioDb.Id) && precioDb.IsActive && sucursalesEnRequest.Contains(precioDb.SucursalId))
-                {
-                    precioDb.IsActive = false;
-                    precioDb.UpdatedAt = DateTime.UtcNow;
-                    _context.ProductoPrecios.Update(precioDb);
-                }
-            }
-
-            await _context.SaveChangesAsync(ct);
-            await transaction.CommitAsync(ct);
-        }
-        catch (Exception)
-        {
-            await transaction.RollbackAsync(ct);
-            throw;
-        }
+        var precios = request.Select(r => new PrecioPorTipoVenta(r.TipoVentaId, r.PrecioVenta));
+        await _productoPrecioService.ReemplazarPreciosDeProductoAsync(productoId, producto.SucursalId, precios, ct);
 
         return NoContent();
     }
@@ -153,35 +84,9 @@ public class ProductoPrecioController : ControllerBase
     [ProducesResponseType(typeof(IEnumerable<ProductoPrecioDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetPorSucursal(Guid sucursalId, CancellationToken ct)
     {
-        SyncManagerStore.RecordPull(sucursalId, "config");
+        _monitorSincronizacion.RegistrarPull(sucursalId, TipoPull.Config);
 
-        var precios = await _context.ProductoPrecios
-            .Where(p => p.SucursalId == sucursalId)
-            .Select(p => new ProductoPrecioDto(
-                p.Id,
-                p.ProductoId,
-                p.SucursalId,
-                p.TipoVentaId,
-                p.PrecioVenta,
-                p.IsActive
-            ))
-            .ToListAsync(ct);
-
-        return Ok(precios);
+        var precios = await _productoPrecioService.GetTodosPorSucursalAsync(sucursalId, ct);
+        return Ok(precios.Select(ProductoPrecioDto.Desde));
     }
 }
-
-public record ProductoPrecioDto(
-    Guid Id,
-    Guid ProductoId,
-    Guid SucursalId,
-    Guid TipoVentaId,
-    decimal PrecioVenta,
-    bool IsActive
-);
-
-public record UpdateProductoPrecioRequest(
-    Guid SucursalId,
-    Guid TipoVentaId,
-    decimal PrecioVenta
-);

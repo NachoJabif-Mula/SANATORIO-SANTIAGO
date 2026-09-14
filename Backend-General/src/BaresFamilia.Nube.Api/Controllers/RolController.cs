@@ -1,3 +1,4 @@
+using BaresFamilia.Core.Models.Contratos.Seguridad;
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Interfaces;
 using BaresFamilia.Nube.Api.Extensions;
@@ -15,10 +16,12 @@ namespace BaresFamilia.Nube.Api.Controllers;
 public class RolController : ControllerBase
 {
     private readonly IService<Rol> _rolService;
+    private readonly IMonitorSincronizacion _monitorSincronizacion;
 
-    public RolController(IService<Rol> rolService)
+    public RolController(IService<Rol> rolService, IMonitorSincronizacion monitorSincronizacion)
     {
         _rolService = rolService;
+        _monitorSincronizacion = monitorSincronizacion;
     }
 
     /// <summary>
@@ -31,7 +34,7 @@ public class RolController : ControllerBase
         var sucursalIdClaim = User.FindFirst("sucursal_id")?.Value;
         if (!string.IsNullOrEmpty(sucursalIdClaim) && Guid.TryParse(sucursalIdClaim, out var sucursalId))
         {
-            SyncManagerStore.RecordPull(sucursalId, "roles");
+            _monitorSincronizacion.RegistrarPull(sucursalId, TipoPull.Roles);
         }
 
         var roles = await _rolService.GetAllAsync(ct);
@@ -42,6 +45,7 @@ public class RolController : ControllerBase
     /// Crea un nuevo rol.
     /// </summary>
     [HttpPost]
+    [Authorize(Policy = "Backoffice")]
     [ProducesResponseType(typeof(Rol), StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateRolRequest request, CancellationToken ct)
     {
@@ -67,6 +71,7 @@ public class RolController : ControllerBase
     /// Actualiza un rol existente.
     /// </summary>
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = "Backoffice")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateRolRequest request, CancellationToken ct)
     {
         var rol = await _rolService.GetByIdAsync(id, ct);
@@ -92,6 +97,7 @@ public class RolController : ControllerBase
     /// Elimina un rol (desactivación lógica).
     /// </summary>
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = "Backoffice")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var rol = await _rolService.GetByIdAsync(id, ct);
@@ -105,6 +111,3 @@ public class RolController : ControllerBase
         return NoContent();
     }
 }
-
-public record CreateRolRequest(string Nombre, List<string> Permisos, bool EsGlobal = false);
-public record UpdateRolRequest(string Nombre, List<string> Permisos, bool EsGlobal = false);

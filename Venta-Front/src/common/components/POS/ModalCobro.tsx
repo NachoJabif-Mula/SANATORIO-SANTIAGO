@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CreditCard, X, Check, Trash2, Plus, DollarSign } from 'lucide-react';
+import { X, Check, Trash2, Plus, DollarSign } from 'lucide-react';
 import type { Cliente, MetodoPago as ClienteMetodoPago } from '@/common/types';
 import { ModalCliente } from './ModalCliente';
 import { ModalAutorizacion } from './ModalAutorizacion';
@@ -245,9 +245,9 @@ export default function ModalCobro({ total, clienteAsociado, onConfirmar, onCanc
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
+      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(8, 9, 11, 0.55)' }}>
+        <div className="flex flex-col items-center gap-3 bg-surface-base border border-border-default rounded-[14px] px-8 py-7">
+          <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
           <p className="text-sm font-semibold text-text-secondary">Cargando métodos de pago...</p>
         </div>
       </div>
@@ -256,49 +256,47 @@ export default function ModalCobro({ total, clienteAsociado, onConfirmar, onCanc
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center animate-modal-backdrop"
-      style={{ backgroundColor: 'rgba(5, 5, 8, 0.8)', backdropFilter: 'blur(20px)' }}>
-      <div className="w-full max-w-4xl mx-4 rounded-[var(--radius-card)] bg-slate-900 border border-border-default shadow-modal animate-modal-content flex flex-col md:flex-row overflow-hidden max-h-[90vh]">
-        
+      style={{ backgroundColor: 'rgba(8, 9, 11, 0.55)' }}>
+      <div className="w-full max-w-4xl mx-4 rounded-[14px] bg-surface-base border border-border-default shadow-modal animate-modal-content flex flex-col md:flex-row overflow-hidden max-h-[90vh]">
+
         {/* Lado Izquierdo: Métodos, pagos agregados, totalizador */}
         <div className="flex-1 p-6 border-r border-border-default flex flex-col overflow-y-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-5 flex-shrink-0">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-amber-500/5 border border-amber-500/20 flex items-center justify-center">
-                <CreditCard className="w-4.5 h-4.5 text-amber-500" />
-              </div>
-              <h3 className="text-base font-bold text-text-primary">Registrar Cobro</h3>
+            <div>
+              <h3 className="text-[14.5px] font-semibold text-text-primary">Rendir pedido</h3>
+              <span className="mono-label">Registrar cobro</span>
             </div>
-            <button onClick={onCancelar} className="touch-btn p-1.5 rounded-[var(--radius-btn)] bg-slate-950/60 text-text-muted hover:text-text-primary hover:bg-slate-850 border border-border-default/60 transition-all cursor-pointer">
+            <button onClick={onCancelar} className="touch-btn w-9 h-9 rounded-[var(--radius-btn)] bg-surface-base text-text-muted hover:text-text-primary border border-border-default flex items-center justify-center min-h-0 min-w-0">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           {clienteAsociado && (
-            <div className="mb-4 py-2 px-3 bg-cyan-500/5 border border-cyan-500/20 rounded-[var(--radius-btn)] flex items-center gap-2 flex-shrink-0">
-              <span className="text-[11px] font-semibold text-cyan-400">
+            <div className="mb-4 py-2 px-3 border border-cyan-500/40 rounded-[var(--radius-btn)] flex items-center gap-2 flex-shrink-0">
+              <span className="text-[11px] font-semibold text-cyan-500">
                 Cuenta Corriente de <strong>{clienteAsociado.nombreCompleto}</strong>
               </span>
             </div>
           )}
 
           {/* Resumen Total Comanda */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-950/50 border border-border-default/80 rounded-[var(--radius-card)] p-4 mb-5 flex-shrink-0">
-            <div>
-              <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider block">Total Comanda</span>
-              <span className="text-lg font-bold text-text-primary block mt-0.5 tabular-nums">{formatCurrency(total)}</span>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5 flex-shrink-0">
+            <div className="p-3 rounded-[var(--radius-card)] bg-surface-overlay border border-border-default" style={{ borderTop: '2px solid var(--acc)' }}>
+              <span className="mono-label block">Total</span>
+              <span className="text-lg font-semibold text-text-primary block mt-0.5 font-mono">{formatCurrency(total)}</span>
             </div>
-            <div>
-              <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider block">Total Recibido</span>
-              <span className="text-lg font-bold text-success-500 block mt-0.5 tabular-nums">{formatCurrency(totalPagado)}</span>
+            <div className="p-3 rounded-[var(--radius-card)] bg-surface-overlay border border-border-default" style={{ borderTop: '2px solid var(--success-500)' }}>
+              <span className="mono-label block">Recibido</span>
+              <span className="text-lg font-semibold text-success-500 block mt-0.5 font-mono">{formatCurrency(totalPagado)}</span>
             </div>
-            <div>
-              <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider block">Vuelto</span>
-              <span className="text-lg font-bold text-cyan-500 block mt-0.5 tabular-nums">{formatCurrency(totalVuelto)}</span>
+            <div className="p-3 rounded-[var(--radius-card)] bg-surface-overlay border border-border-default" style={{ borderTop: '2px solid var(--cyan-500)' }}>
+              <span className="mono-label block">Vuelto</span>
+              <span className="text-lg font-semibold text-cyan-500 block mt-0.5 font-mono">{formatCurrency(totalVuelto)}</span>
             </div>
-            <div>
-              <span className="text-[9px] font-bold text-text-muted uppercase tracking-wider block">Faltante</span>
-              <span className={`text-lg font-bold block mt-0.5 tabular-nums ${faltante > 0 ? 'text-amber-500' : 'text-success-500'}`}>
+            <div className="p-3 rounded-[var(--radius-card)] bg-surface-overlay border border-border-default" style={{ borderTop: `2px solid ${faltante > 0 ? 'var(--warning-500)' : 'var(--success-500)'}` }}>
+              <span className="mono-label block">Faltante</span>
+              <span className={`text-lg font-semibold block mt-0.5 font-mono ${faltante > 0 ? 'text-amber-500' : 'text-success-500'}`}>
                 {faltante > 0 ? formatCurrency(faltante) : 'Cubierto ✓'}
               </span>
             </div>
@@ -306,23 +304,23 @@ export default function ModalCobro({ total, clienteAsociado, onConfirmar, onCanc
 
           {/* Métodos de Pago disponibles */}
           <div className="mb-5 flex-shrink-0">
-            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-2">1. Seleccione Medio de Pago</span>
+            <span className="mono-label block mb-2">Agregar medio de pago</span>
             <div className="grid grid-cols-2 gap-2">
               {metodosPago.map(m => (
                 <button
                   key={m.id}
                   type="button"
                   onClick={() => setMetodoSeleccionado(m)}
-                  className={`py-3 px-4 rounded-[var(--radius-btn)] text-left border font-semibold text-xs transition-all active:scale-[0.98] cursor-pointer flex items-center justify-between min-h-[42px] ${
+                  className={`h-[52px] px-4 rounded-[var(--radius-btn)] text-left border font-semibold text-[13px] active:scale-[0.98] cursor-pointer flex items-center justify-between ${
                     metodoSeleccionado?.id === m.id
-                      ? 'bg-amber-500 text-slate-950 border-amber-500 shadow-sm'
-                      : 'bg-slate-950/60 text-text-primary border-border-default/60 hover:bg-slate-850 hover:border-border-default'
+                      ? 'bg-amber-500 text-white border-amber-500'
+                      : 'bg-surface-overlay text-text-primary border-border-default hover:border-amber-500'
                   }`}
                 >
                   <span className="truncate">{m.nombre}</span>
                   {m.comisionPorcentaje > 0 && (
-                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                      metodoSeleccionado?.id === m.id ? 'bg-slate-900 text-amber-500' : 'bg-slate-900 border border-border-default text-text-muted'
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded font-mono ${
+                      metodoSeleccionado?.id === m.id ? 'bg-white/20 text-white' : 'bg-surface-base border border-border-default text-text-muted'
                     }`}>
                       +{m.comisionPorcentaje}%
                     </span>
@@ -334,28 +332,28 @@ export default function ModalCobro({ total, clienteAsociado, onConfirmar, onCanc
 
           {/* Pagos Agregados */}
           <div className="flex-1 flex flex-col min-h-[140px]">
-            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-2">Pagos Registrados</span>
-            <div className="flex-1 bg-slate-950/40 border border-border-default/60 rounded-[var(--radius-card)] p-3 overflow-y-auto space-y-2 max-h-[180px]">
+            <span className="mono-label block mb-2">Pagos registrados</span>
+            <div className="flex-1 border border-border-default rounded-[var(--radius-card)] p-3 overflow-y-auto space-y-2 max-h-[180px]">
               {pagosAgregados.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-text-muted text-xs py-8">
-                  No se han registrado pagos para esta comanda.
+                <div className="h-full flex items-center justify-center text-text-muted text-xs py-8 text-center px-4">
+                  Toque un medio de pago para imputar el importe.
                 </div>
               ) : (
                 pagosAgregados.map((p, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 rounded-[var(--radius-btn)] bg-slate-900/60 border border-border-default/40 animate-fade-in">
+                  <div key={idx} className="flex items-center justify-between p-2.5 rounded-[var(--radius-btn)] bg-surface-overlay border border-border-default animate-fade-in">
                     <div>
-                      <span className="text-xs font-bold text-text-primary block">{p.nombre}</span>
+                      <span className="text-[13px] font-semibold text-text-primary block">{p.nombre}</span>
                       {p.vuelto > 0 && (
-                        <span className="text-[9px] text-cyan-500 font-semibold mt-0.5 block">
+                        <span className="text-[9px] text-cyan-500 font-semibold mt-0.5 block font-mono">
                           Recibido: {formatCurrency(p.monto + p.vuelto)} — Vuelto: {formatCurrency(p.vuelto)}
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-amber-500 tabular-nums">{formatCurrency(p.monto)}</span>
+                      <span className="text-sm font-semibold text-text-primary font-mono">{formatCurrency(p.monto)}</span>
                       <button
                         onClick={() => handleEliminarPago(idx)}
-                        className="p-1 rounded text-text-muted hover:text-danger-400 hover:bg-danger-500/5 transition-colors cursor-pointer"
+                        className="w-8 h-8 flex items-center justify-center rounded text-text-muted hover:text-danger-500 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -368,31 +366,31 @@ export default function ModalCobro({ total, clienteAsociado, onConfirmar, onCanc
         </div>
 
         {/* Lado Derecho: Teclado numérico táctil para ingresar montos */}
-        <div className="w-full md:w-[320px] p-6 bg-slate-950/40 flex flex-col justify-between border-t md:border-t-0 md:border-l border-border-default flex-shrink-0">
+        <div className="w-full md:w-[320px] p-6 bg-surface-overlay flex flex-col justify-between border-t md:border-t-0 md:border-l border-border-default flex-shrink-0">
           <div className="space-y-4">
             <div>
-              <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider block mb-2">2. Ingrese Monto Recibido</span>
-              <div className="bg-slate-900/80 border border-border-default/80 rounded-[var(--radius-btn)] p-2.5 flex items-center justify-between">
+              <span className="mono-label block mb-2">Monto recibido</span>
+              <div className="bg-surface-base border border-border-default rounded-[var(--radius-btn)] p-2.5 flex items-center justify-between">
                 <DollarSign className="w-4 h-4 text-amber-500" />
-                <span className="text-xl font-bold text-text-primary tabular-nums">
+                <span className="text-xl font-semibold text-text-primary font-mono">
                   {montoText || '0'}
                 </span>
               </div>
             </div>
 
             {/* Teclado */}
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-3 gap-1.5 font-mono">
               {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '←'].map(k => (
                 <button
                   key={k}
                   type="button"
                   onClick={() => handleNumpadPress(k)}
-                  className={`h-11 rounded-[var(--radius-btn)] text-sm font-bold select-none cursor-pointer active:scale-95 transition-all border ${
+                  className={`h-11 rounded-[var(--radius-btn)] text-sm font-semibold select-none cursor-pointer active:scale-95 border ${
                     k === 'C'
-                      ? 'bg-danger-500/5 text-danger-400 border-danger-500/25 hover:bg-danger-500/10'
+                      ? 'bg-surface-base text-danger-500 border-border-default hover:border-danger-500'
                       : k === '←'
-                      ? 'bg-slate-900/60 text-text-secondary border-border-default/60 hover:bg-slate-850'
-                      : 'bg-slate-900/60 text-text-primary border-border-default/60 hover:bg-slate-850 hover:border-border-strong'
+                      ? 'bg-surface-base text-text-secondary border-border-default'
+                      : 'bg-surface-base text-text-primary border-border-default hover:border-amber-500'
                   }`}
                 >
                   {k}
@@ -404,17 +402,17 @@ export default function ModalCobro({ total, clienteAsociado, onConfirmar, onCanc
             <button
               onClick={handleAgregarPago}
               disabled={!metodoSeleccionado || faltante === 0}
-              className="w-full h-11 rounded-[var(--radius-btn)] bg-slate-900 hover:bg-slate-850 border border-border-strong text-text-primary text-xs font-bold active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+              className="w-full h-11 rounded-[var(--radius-btn)] bg-surface-base hover:border-amber-500 border border-border-default text-text-primary text-xs font-semibold active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-1.5"
             >
               <Plus className="w-3.5 h-3.5 text-amber-500" />
               Agregar Pago
             </button>
           </div>
 
-          <div className="mt-4 pt-4 border-t border-border-default/60 space-y-4">
+          <div className="mt-4 pt-4 border-t border-border-default space-y-4">
             {errorMsg && (
-              <div className="py-2 px-3 bg-danger-500/5 border border-danger-500/20 rounded-md text-center animate-fade-in flex-shrink-0">
-                <span className="text-[11px] font-semibold text-danger-400">{errorMsg}</span>
+              <div className="py-2 px-3 border border-danger-500/40 rounded-md text-center animate-fade-in flex-shrink-0">
+                <span className="text-[11px] font-semibold text-danger-500">{errorMsg}</span>
               </div>
             )}
 
@@ -423,7 +421,7 @@ export default function ModalCobro({ total, clienteAsociado, onConfirmar, onCanc
               <button
                 type="button"
                 onClick={onCancelar}
-                className="flex-1 h-11 rounded-[var(--radius-btn)] bg-slate-900 border border-border-default text-xs font-bold text-text-secondary hover:text-text-primary hover:bg-slate-850 active:scale-[0.98] transition-all cursor-pointer"
+                className="flex-1 h-11 rounded-[var(--radius-btn)] bg-surface-base border border-border-default text-xs font-semibold text-text-secondary hover:text-text-primary active:scale-[0.98] cursor-pointer"
               >
                 Atrás
               </button>
@@ -431,11 +429,11 @@ export default function ModalCobro({ total, clienteAsociado, onConfirmar, onCanc
                 type="button"
                 disabled={submitting || totalPagado < total}
                 onClick={handleConfirmarCobro}
-                className="flex-[1.5] h-11 rounded-[var(--radius-btn)] bg-amber-500 text-xs font-bold text-slate-950 hover:bg-amber-400 active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
+                className="flex-[1.5] h-11 rounded-[var(--radius-btn)] bg-amber-500 border border-amber-500 text-xs font-semibold text-white hover:bg-amber-600 active:scale-[0.98] disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 {submitting ? (
                   <>
-                    <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    <div className="w-3.5 h-3.5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
                     Procesando...
                   </>
                 ) : (

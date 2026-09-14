@@ -1,21 +1,21 @@
-using BaresFamilia.Infrastructure.Data;
+using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
 
 namespace BaresFamilia.Local.Api.Hubs;
 
 /// <summary>
 /// Hub de SignalR para la comunicación bidireccional en tiempo real entre la API backend local
 /// y los servicios PrintBridge locales en cada terminal de cobro.
+/// Flujo: PrintHub → IPrintJobService → PrintJobService → IPrintJobRepository → PrintJobRepository.
 /// </summary>
 public class PrintHub : Hub
 {
-    private readonly LocalContext _context;
+    private readonly IPrintJobService _printJobService;
     private readonly ILogger<PrintHub> _logger;
 
-    public PrintHub(LocalContext context, ILogger<PrintHub> logger)
+    public PrintHub(IPrintJobService printJobService, ILogger<PrintHub> logger)
     {
-        _context = context;
+        _printJobService = printJobService;
         _logger = logger;
     }
 
@@ -24,8 +24,8 @@ public class PrintHub : Hub
     /// </summary>
     public async Task RegisterTerminal(Guid sucursalId, int terminalNumero)
     {
-        string groupName = $"Sucursal_{sucursalId}";
-        await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"Sucursal_{sucursalId}");
+
         _logger.LogInformation("PrintBridge registrado: ConnId={ConnId}, SucursalId={SucursalId}, Terminal={Terminal}",
             Context.ConnectionId, sucursalId, terminalNumero);
     }
@@ -35,15 +35,8 @@ public class PrintHub : Hub
     /// </summary>
     public async Task ReportPrintResult(Guid jobId, bool success, string? errorMessage, string? resultJson)
     {
-        var job = await _context.PrintJobs.FindAsync(jobId);
-        if (job != null)
-        {
-            job.Estado = success ? "Impreso" : "Fallo";
-            job.ResultadoJson = resultJson ?? errorMessage;
-            job.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-            _logger.LogInformation("PrintJob {JobId} finalizado: Estado={Estado}", jobId, job.Estado);
-        }
+        if (await _printJobService.RegistrarResultadoImpresionAsync(jobId, success, errorMessage, resultJson))
+            _logger.LogInformation("PrintJob {JobId} finalizado. Exitoso={Exitoso}", jobId, success);
     }
 
     /// <summary>
@@ -51,16 +44,7 @@ public class PrintHub : Hub
     /// </summary>
     public async Task ReportFiscalResult(Guid jobId, bool success, string? cae, string? nroComprobante, string? errorMessage)
     {
-        var job = await _context.PrintJobs.FindAsync(jobId);
-        if (job != null)
-        {
-            job.Estado = success ? "Impreso" : "Fallo";
-            job.ResultadoJson = success
-                ? $"{{\"cae\":\"{cae}\",\"comprobante\":\"{nroComprobante}\"}}"
-                : $"{{\"error\":\"{errorMessage}\"}}";
-            job.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-            _logger.LogInformation("FiscalJob {JobId} finalizado: Estado={Estado}, CAE={Cae}", jobId, job.Estado, cae);
-        }
+        if (await _printJobService.RegistrarResultadoFiscalAsync(jobId, success, cae, nroComprobante, errorMessage))
+            _logger.LogInformation("FiscalJob {JobId} finalizado. Exitoso={Exitoso}, CAE={Cae}", jobId, success, cae);
     }
 }

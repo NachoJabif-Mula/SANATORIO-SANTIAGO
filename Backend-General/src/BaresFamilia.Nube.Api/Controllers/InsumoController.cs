@@ -1,3 +1,4 @@
+using BaresFamilia.Core.Models.Contratos.Inventario;
 using BaresFamilia.Core.Models.Entities.Inventario;
 using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -11,7 +12,7 @@ namespace BaresFamilia.Nube.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "Backoffice")]
 public class InsumoController : ControllerBase
 {
     private readonly IInsumoService _insumoService;
@@ -123,19 +124,3 @@ public class InsumoController : ControllerBase
         return NoContent();
     }
 }
-
-// ═══════════════════════════════════
-// DTOs de Request
-// ═══════════════════════════════════
-
-public record CreateInsumoRequest(
-    string Nombre,
-    string UnidadMedida,
-    decimal StockMinimo
-);
-
-public record UpdateInsumoRequest(
-    string Nombre,
-    string? UnidadMedida,
-    decimal StockMinimo
-);

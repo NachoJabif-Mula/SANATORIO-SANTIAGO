@@ -1,6 +1,9 @@
+using System.ComponentModel.DataAnnotations.Schema;
+using BaresFamilia.Core.Models.Contratos.Comandas;
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Entities.CuentasCorrientes;
 using BaresFamilia.Core.Models.Enums;
+using BaresFamilia.Core.Models.Interfaces;
 
 namespace BaresFamilia.Core.Models.Entities.Transaccional;
 
@@ -39,4 +42,12 @@ public class Comanda : BaseEntity
     public Usuario Usuario { get; set; } = null!;
     public ICollection<ComandaItem> Items { get; set; } = [];
     public ICollection<Pago> Pagos { get; set; } = [];
+
+    /// <summary>
+    /// Resultado de la última impresión de ticket de comanda intentada al crear/actualizar
+    /// (no se persiste). Permite que el frontend muestre el ticket en pantalla cuando la
+    /// sucursal está en modo simulador.
+    /// </summary>
+    [NotMapped]
+    public ResultadoImpresion? UltimaImpresion { get; set; }
 }

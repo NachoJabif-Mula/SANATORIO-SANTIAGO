@@ -1,3 +1,4 @@
+using BaresFamilia.Core.Models.Contratos.Comandas;
 using BaresFamilia.Core.Models.Entities.Transaccional;
 using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.AspNetCore.Mvc;
@@ -101,6 +102,10 @@ public class ComandaController : ControllerBase
         catch (KeyNotFoundException ex)
         {
             return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {
@@ -218,24 +223,3 @@ public class ComandaController : ControllerBase
         return Ok(resultado);
     }
 }
-
-public record CrearComandaItemRequest(Guid ProductoId, int Cantidad, decimal PrecioUnitario, string? Notas);
-public record CrearComandaRequest(
-    Guid TipoVentaId,
-    Guid? MesaId,
-    Guid UsuarioId,
-    decimal Subtotal,
-    decimal Descuento,
-    decimal Total,
-    List<CrearComandaItemRequest> Items,
-    Guid? ClienteId = null
-);
-public record ActualizarComandaRequest(
-    Guid? UsuarioId,
-    decimal Subtotal, 
-    decimal Descuento, 
-    decimal Total,
-    List<CrearComandaItemRequest> Items
-);
-public record CobrarComandaRequest(Guid TurnoCajaId, List<PagoItemDto> Pagos);
-public record AnularRequest(Guid UsuarioId, string Motivo);

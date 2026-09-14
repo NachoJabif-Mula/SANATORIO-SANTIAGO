@@ -61,16 +61,11 @@ export default function PosAdminScreen() {
   const [loadingConfig, setLoadingConfig] = useState(true);
 
   // Estados de Modales
-  const [activeModal, setActiveModal] = useState<'historial' | 'reimprimir' | 'sincronizar' | null>(null);
-  
+  const [activeModal, setActiveModal] = useState<'historial' | 'reimprimir' | null>(null);
+
   // Estado de Historial
   const [loadingComandas, setLoadingComandas] = useState(false);
   const [selectedComanda, setSelectedComanda] = useState<ComandaDetail | null>(null);
-
-  // Estado de Sincronización
-  const [syncStep, setSyncStep] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
-  const [syncLogs, setSyncLogs] = useState<Array<{ id: string; timestamp: string; tipo: string; mensaje: string; exitoso: boolean }>>([]);
-  const [syncPollingInterval, setSyncPollingInterval] = useState<any>(null);
 
   // Cargar configuración de seguridad y botones
   useEffect(() => {
@@ -147,68 +142,6 @@ export default function PosAdminScreen() {
     }
   };
 
-  const runSync = async () => {
-    setSyncStep('running');
-    setSyncLogs([]);
-    
-    try {
-      await api.post('/sync/run');
-      
-      const logsRes = await api.get('/sync/logs');
-      setSyncLogs(logsRes.data || []);
-      
-      const interval = setInterval(async () => {
-        try {
-          const res = await api.get('/sync/logs');
-          const currentLogs = res.data || [];
-          setSyncLogs(currentLogs);
-          
-          const hasSuccess = currentLogs.some((l: any) => 
-            l.tipo === 'PULL' && l.exitoso && l.mensaje.includes('completada con éxito')
-          );
-          const hasWarning = currentLogs.some((l: any) => 
-            l.tipo === 'PULL' && !l.exitoso && l.mensaje.includes('finalizada con advertencias')
-          );
-          const hasError = currentLogs.some((l: any) => 
-            l.tipo === 'ERROR' || (l.tipo === 'PULL' && !l.exitoso && l.mensaje.includes('Error general'))
-          );
-          
-          if (hasSuccess || hasWarning) {
-            setSyncStep('success');
-            clearInterval(interval);
-          } else if (hasError) {
-            setSyncStep('error');
-            clearInterval(interval);
-          }
-        } catch (err) {
-          console.error('Error polling sync logs:', err);
-        }
-      }, 1500);
-      
-      setSyncPollingInterval(interval);
-    } catch (err: any) {
-      console.error('Error starting sync:', err);
-      setSyncStep('error');
-      const errorMsg = err.response?.data?.message || 'Error al conectar con la API Local.';
-      setSyncLogs(prev => [
-        {
-          id: 'err-local',
-          timestamp: new Date().toISOString(),
-          tipo: 'ERROR',
-          mensaje: `❌ Error al iniciar sync: ${errorMsg}`,
-          exitoso: false
-        },
-        ...prev
-      ]);
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (syncPollingInterval) clearInterval(syncPollingInterval);
-    };
-  }, [syncPollingInterval]);
-
   const formatARS = (monto: number) => {
     return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(monto);
   };
@@ -234,8 +167,7 @@ export default function PosAdminScreen() {
         openReimprimir();
         break;
       case 'sincronizar':
-        setSyncStep('idle');
-        setActiveModal('sincronizar');
+        navigate('/sync');
         break;
     }
   };
@@ -243,37 +175,30 @@ export default function PosAdminScreen() {
   return (
     <div className="h-screen w-screen flex flex-col bg-slate-950 overflow-hidden text-text-primary">
       {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-4 bg-surface-base border-b border-border-default flex-shrink-0 shadow-md">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => navigate('/')} 
-            className="touch-btn p-2 rounded-xl bg-slate-800 text-text-secondary hover:text-text-primary hover:bg-slate-700 border border-border-default transition-all"
-            title="Volver al Salón"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="h-6 w-[1px] bg-border-default mx-1" />
-          <h1 className="text-base font-bold tracking-tight">
-            Panel de Operaciones Admin
-          </h1>
-          <span className="text-[9px] font-semibold uppercase tracking-wider bg-slate-850 text-text-muted px-2 py-0.5 rounded-[3px] border border-border-default/50">
-            Seguro
-          </span>
-        </div>
+      <header className="flex items-center gap-3 px-3.5 py-2 min-h-[56px] bg-surface-base border-b border-border-default flex-shrink-0">
+        <button
+          onClick={() => navigate('/')}
+          className="touch-btn h-12 px-3 flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-surface-base text-text-primary hover:border-amber-500 hover:text-amber-500 border border-border-default text-[12.5px] font-medium min-h-0"
+          title="Volver al Salón"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Mapa
+        </button>
+        <h1 className="text-[15px] font-semibold text-text-primary">Funciones de administración</h1>
 
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-btn)] bg-slate-900/40 border border-border-default/50">
-            <User className="w-4 h-4 text-text-muted" />
-            <span className="text-sm font-semibold text-text-secondary">{usuario.nombre}</span>
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-info-500/5 text-info-400 border border-info-500/10">
-              {usuario.rol}
-            </span>
-          </div>
+        <div className="flex-1" />
+
+        <div className="flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-btn)] bg-surface-overlay border border-border-default">
+          <User className="w-3.5 h-3.5 text-text-muted" />
+          <span className="text-xs font-semibold text-text-secondary">{usuario.nombre}</span>
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider text-info-500 border border-info-500/30 font-mono">
+            {usuario.rol}
+          </span>
         </div>
       </header>
 
       {/* Main Workspace */}
-      <main className="flex-1 overflow-y-auto p-6 md:p-12 flex flex-col items-center justify-center bg-slate-900/40 relative">
+      <main className="flex-1 overflow-y-auto p-6 md:p-12 flex flex-col items-center justify-center bg-slate-950 pos-grid-bg relative">
         {loadingConfig ? (
           <div className="flex flex-col items-center">
             <div className="w-9 h-9 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
@@ -281,30 +206,22 @@ export default function PosAdminScreen() {
           </div>
         ) : (
           <div className="w-full max-w-4xl space-y-8 animate-fade-in">
-            <div className="text-center">
-              <h2 className="text-lg md:text-xl font-bold text-text-primary flex items-center justify-center gap-2.5">
-                <KeyRound className="w-5 h-5 text-amber-500" />
-                Acciones Especiales y Caja
-              </h2>
-              <p className="text-sm text-text-muted mt-2">Accede a las opciones autorizadas para tu perfil de encargado.</p>
-            </div>
-
             {/* Grid de Botones */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
               {buttons.map(btn => {
                 if (!btn.enabled) return null;
                 const hasPerm = tienePermiso(btn.requiredPermission);
-                
+
                 // Asignar icono dinámico
                 const getIcon = () => {
                   switch (btn.id) {
-                    case 'cierre-caja': return <Lock className="w-7 h-7" />;
-                    case 'egresos': return <Wallet className="w-7 h-7" />;
-                    case 'cuentas-corrientes': return <Wallet className="w-7 h-7" />;
-                    case 'historial': return <History className="w-7 h-7" />;
-                    case 'reimprimir': return <Printer className="w-7 h-7" />;
-                    case 'sincronizar': return <RefreshCw className="w-7 h-7" />;
-                    default: return <KeyRound className="w-7 h-7" />;
+                    case 'cierre-caja': return <Lock className="w-5 h-5" />;
+                    case 'egresos': return <Wallet className="w-5 h-5" />;
+                    case 'cuentas-corrientes': return <Wallet className="w-5 h-5" />;
+                    case 'historial': return <History className="w-5 h-5" />;
+                    case 'reimprimir': return <Printer className="w-5 h-5" />;
+                    case 'sincronizar': return <RefreshCw className="w-5 h-5" />;
+                    default: return <KeyRound className="w-5 h-5" />;
                   }
                 };
 
@@ -313,32 +230,22 @@ export default function PosAdminScreen() {
                     key={btn.id}
                     onClick={() => handleActionClick(btn)}
                     disabled={!hasPerm}
-                    className={`touch-btn flex flex-col items-center justify-center p-8 rounded-[var(--radius-card)] border transition-all duration-150 text-center relative group select-none min-h-[190px]
+                    className={`touch-btn flex flex-col gap-2.5 items-start justify-center p-4 rounded-[var(--radius-card)] border text-left select-none min-h-[110px]
                       ${hasPerm
-                        ? 'bg-slate-900/50 border-border-default hover:border-border-strong hover:bg-slate-850 cursor-pointer active:scale-[0.98]'
-                        : 'bg-slate-950/40 border-border-subtle/50 text-text-muted cursor-not-allowed opacity-50'}
+                        ? 'bg-surface-base border-border-default hover:border-amber-500 cursor-pointer active:scale-[0.98] text-amber-500'
+                        : 'bg-surface-base border-border-subtle text-text-muted cursor-not-allowed opacity-50'}
                     `}
                   >
-                    {/* Icono Principal */}
-                    <div className={`w-12 h-12 rounded-[var(--radius-btn)] flex items-center justify-center mb-4
-                      ${hasPerm
-                        ? 'bg-slate-850 border border-border-default text-amber-500'
-                        : 'bg-slate-950 text-text-muted border border-border-subtle'}
-                    `}>
-                      {getIcon()}
-                    </div>
+                    {getIcon()}
+                    <span className="text-[13px] font-semibold text-text-primary">{btn.label}</span>
 
-                    {/* Texto y Estado */}
-                    <span className="text-sm font-bold text-text-primary">{btn.label}</span>
-
-                    {/* Indicador de Restricción */}
                     {!hasPerm ? (
-                      <div className="mt-3 flex items-center justify-center gap-1 text-[10px] font-semibold text-danger-400 bg-danger-500/5 px-2.5 py-1 rounded-[3px] border border-danger-500/15">
+                      <div className="flex items-center gap-1 text-[10px] font-semibold text-danger-500">
                         <Lock className="w-3 h-3" />
                         Acceso Restringido
                       </div>
                     ) : (
-                      <span className="text-[10px] text-text-muted mt-2 block font-mono">Reclama: {btn.requiredPermission}</span>
+                      <span className="text-[10px] text-text-muted font-mono">Reclama: {btn.requiredPermission}</span>
                     )}
                   </button>
                 );
@@ -352,8 +259,8 @@ export default function PosAdminScreen() {
 
       {/* --- MODAL: REIMPRIMIR ÚLTIMO TICKET --- */}
       {activeModal === 'reimprimir' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}>
-          <div className="bg-slate-900 border border-border-strong w-full max-w-md rounded-[var(--radius-card)] flex flex-col shadow-[var(--shadow-modal)] overflow-hidden animate-modal-content">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(8, 9, 11, 0.55)' }}>
+          <div className="bg-surface-base border border-border-default w-full max-w-md rounded-[14px] flex flex-col shadow-modal overflow-hidden animate-modal-content">
             {/* Header Modal */}
             <div className="flex items-center justify-between p-5 border-b border-border-default shrink-0">
               <div className="flex items-center gap-3">
@@ -491,127 +398,6 @@ export default function PosAdminScreen() {
               >
                 Imprimir Copia
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL: SINCRONIZACIÓN MANUAL --- */}
-      {activeModal === 'sincronizar' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)' }}>
-          <div className="bg-slate-900 border border-border-strong w-full max-w-lg rounded-[var(--radius-card)] p-6 shadow-[var(--shadow-modal)] animate-modal-content">
-            <div className="flex flex-col items-center text-center space-y-5">
-
-              {/* Icono de Sincronización */}
-              <div className={`w-12 h-12 rounded-[var(--radius-btn)] border flex items-center justify-center
-                ${syncStep === 'success' ? 'bg-success-500/10 border-success-500/25 text-success-500' :
-                  syncStep === 'error' ? 'bg-danger-500/10 border-danger-500/25 text-danger-400' : 'bg-slate-850 border-border-default text-amber-500'}
-              `}>
-                <RefreshCw className={`w-6 h-6 ${syncStep === 'running' ? 'animate-spin' : ''}`} />
-              </div>
-
-              {/* Título y Mensaje */}
-              <div className="space-y-1.5">
-                <h3 className="text-base font-bold text-text-primary">
-                  {syncStep === 'idle' && 'Forzar Sincronización'}
-                  {syncStep === 'running' && 'Sincronizando con Nube...'}
-                  {syncStep === 'success' && 'Sincronización Exitosa'}
-                  {syncStep === 'error' && 'Sincronización Fallida'}
-                </h3>
-                <p className="text-xs text-text-muted max-w-xs leading-relaxed">
-                  {syncStep === 'idle' && 'Esto iniciará un ciclo de sincronización manual de catálogos y transacciones desde este POS local.'}
-                  {syncStep === 'running' && 'Ejecutando transferencia bidireccional de datos en tiempo real...'}
-                  {syncStep === 'success' && 'Todas las comandas locales han sido enviadas y los catálogos del Backoffice están actualizados.'}
-                  {syncStep === 'error' && 'Hubo un inconveniente al conectar con la Nube o procesar los datos de sincronización.'}
-                </p>
-              </div>
-
-              {/* Progreso Visual y Logs */}
-              {syncStep !== 'idle' && (
-                <div className="w-full space-y-3">
-                  <div className="flex items-center justify-between text-xs text-text-muted">
-                    <span className="font-semibold uppercase tracking-wider text-[10px]">Detalle del Proceso:</span>
-                    {syncStep === 'running' && (
-                      <span className="flex items-center gap-1.5 text-amber-500 font-bold">
-                        <RefreshCw size={11} className="animate-spin" />
-                        Sincronizando...
-                      </span>
-                    )}
-                    {syncStep === 'success' && <span className="text-success-400 font-bold">Completado</span>}
-                    {syncStep === 'error' && <span className="text-danger-400 font-bold">Error de Sync</span>}
-                  </div>
-
-                  {/* Contenedor de Logs estilo terminal */}
-                  <div className="w-full h-48 bg-slate-950 rounded-[var(--radius-btn)] border border-border-default/50 p-3 overflow-y-auto text-left font-mono text-[10px] leading-relaxed space-y-1.5 scrollbar-thin">
-                    {syncLogs.length === 0 ? (
-                      <div className="text-text-muted italic">Iniciando conexión local...</div>
-                    ) : (
-                      syncLogs.map((log) => {
-                        let colorClass = 'text-text-muted';
-                        if (log.tipo === 'ERROR') colorClass = 'text-danger-400 font-bold';
-                        else if (log.tipo === 'PUSH') colorClass = 'text-amber-400';
-                        else if (log.tipo === 'PULL') colorClass = 'text-success-400';
-                        else if (log.tipo === 'CONFIG') colorClass = 'text-cyan-400';
-
-                        const timeStr = new Date(log.timestamp).toLocaleTimeString('es-AR', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit'
-                        });
-
-                        return (
-                          <div key={log.id} className="flex gap-2 items-start hover:bg-slate-900/60 py-0.5 rounded px-1">
-                            <span className="text-text-muted font-medium shrink-0">{timeStr}</span>
-                            <span className={`${colorClass} break-words`}>{log.mensaje}</span>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Botones de Acción */}
-              <div className="w-full flex gap-3 pt-3">
-                {syncStep === 'idle' && (
-                  <>
-                    <button
-                      onClick={() => setActiveModal(null)}
-                      className="touch-btn flex-1 py-3 rounded-[var(--radius-btn)] bg-slate-900 text-text-secondary hover:text-text-primary hover:bg-slate-850 text-sm font-bold border border-border-default cursor-pointer active:scale-95 transition-all text-center"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      onClick={runSync}
-                      className="touch-btn flex-1 py-3 rounded-[var(--radius-btn)] bg-amber-500 text-slate-950 hover:bg-amber-400 text-sm font-bold shadow-sm cursor-pointer active:scale-95 transition-all text-center"
-                    >
-                      Sincronizar Ahora
-                    </button>
-                  </>
-                )}
-                {syncStep === 'running' && (
-                  <button
-                    disabled
-                    className="w-full py-3 rounded-[var(--radius-btn)] bg-slate-900 text-text-muted text-sm font-bold border border-border-default cursor-not-allowed text-center"
-                  >
-                    Procesando, por favor espere...
-                  </button>
-                )}
-                {(syncStep === 'success' || syncStep === 'error') && (
-                  <button
-                    onClick={() => {
-                      if (syncPollingInterval) clearInterval(syncPollingInterval);
-                      setActiveModal(null);
-                    }}
-                    className={`touch-btn w-full py-3 rounded-[var(--radius-btn)] text-white text-sm font-bold shadow-sm cursor-pointer active:scale-95 transition-all text-center ${
-                      syncStep === 'success' ? 'bg-success-600 hover:bg-success-500' : 'bg-danger-600 hover:bg-danger-500'
-                    }`}
-                  >
-                    Cerrar
-                  </button>
-                )}
-              </div>
-
             </div>
           </div>
         </div>

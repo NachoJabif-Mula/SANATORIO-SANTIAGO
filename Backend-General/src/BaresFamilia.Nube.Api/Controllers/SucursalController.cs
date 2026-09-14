@@ -1,3 +1,4 @@
+using BaresFamilia.Core.Models.Contratos.Catalogos;
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -35,6 +36,7 @@ public class SucursalController : ControllerBase
     /// Crea una nueva sucursal.
     /// </summary>
     [HttpPost]
+    [Authorize(Policy = "Backoffice")]
     [ProducesResponseType(typeof(Sucursal), StatusCodes.Status201Created)]
     public async Task<IActionResult> Create([FromBody] CreateSucursalRequest request, CancellationToken ct)
     {
@@ -52,6 +54,7 @@ public class SucursalController : ControllerBase
             PuntoDeVenta = request.PuntoDeVenta ?? 1,
             NumeroIIBB = request.NumeroIIBB?.Trim(),
             FechaInicioActividades = request.FechaInicioActividades,
+            ImpresionSimulada = request.ImpresionSimulada ?? false,
             IsActive = true
         };
 
@@ -63,6 +66,7 @@ public class SucursalController : ControllerBase
     /// Actualiza una sucursal existente.
     /// </summary>
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = "Backoffice")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateSucursalRequest request, CancellationToken ct)
     {
         var sucursal = await _sucursalService.GetByIdAsync(id, ct);
@@ -81,6 +85,7 @@ public class SucursalController : ControllerBase
         sucursal.PuntoDeVenta = request.PuntoDeVenta ?? sucursal.PuntoDeVenta;
         sucursal.NumeroIIBB = request.NumeroIIBB?.Trim();
         sucursal.FechaInicioActividades = request.FechaInicioActividades;
+        sucursal.ImpresionSimulada = request.ImpresionSimulada ?? sucursal.ImpresionSimulada;
         sucursal.UpdatedAt = DateTime.UtcNow;
 
         await _sucursalService.UpdateAsync(sucursal, ct);
@@ -91,6 +96,7 @@ public class SucursalController : ControllerBase
     /// Elimina una sucursal (desactivación lógica).
     /// </summary>
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = "Backoffice")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         var sucursal = await _sucursalService.GetByIdAsync(id, ct);
@@ -104,25 +110,3 @@ public class SucursalController : ControllerBase
         return NoContent();
     }
 }
-
-public record CreateSucursalRequest(
-    string Nombre,
-    string Direccion,
-    string? Cuit = null,
-    string? RazonSocial = null,
-    string? DomicilioFiscal = null,
-    int? CondicionIva = null,
-    int? PuntoDeVenta = 1,
-    string? NumeroIIBB = null,
-    DateTime? FechaInicioActividades = null);
-
-public record UpdateSucursalRequest(
-    string Nombre,
-    string Direccion,
-    string? Cuit = null,
-    string? RazonSocial = null,
-    string? DomicilioFiscal = null,
-    int? CondicionIva = null,
-    int? PuntoDeVenta = null,
-    string? NumeroIIBB = null,
-    DateTime? FechaInicioActividades = null);

@@ -20,7 +20,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string, rememberMe: boolean) => Promise<string | null>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 // ════════════════════════════════════════
@@ -102,7 +102,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Revocar la sesión persistida en el servidor (si el login se hizo con
+    // "mantener sesión iniciada"). Si falla (sin red, token ya vencido, etc.)
+    // igual limpiamos el storage local: el logout del lado del cliente nunca
+    // debe depender de que el request al backend tenga éxito.
+    try {
+      await api.post('/auth/logout');
+    } catch {
+      // Ignorado a propósito.
+    }
     clearToken();
     setUser(null);
   }, []);

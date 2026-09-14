@@ -21,6 +21,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BaresFamilia.Fiscal.Cli", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BaresFamilia.PrintBridge", "src\BaresFamilia.PrintBridge\BaresFamilia.PrintBridge.csproj", "{F7C1AD4F-DF92-4616-8B9E-7E806CF8452D}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BaresFamilia.Tests", "tests\BaresFamilia.Tests\BaresFamilia.Tests.csproj", "{BA7B16F6-EE69-438E-9A00-8F657052FDBD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -127,6 +131,18 @@ Global
 		{F7C1AD4F-DF92-4616-8B9E-7E806CF8452D}.Release|x64.Build.0 = Release|Any CPU
 		{F7C1AD4F-DF92-4616-8B9E-7E806CF8452D}.Release|x86.ActiveCfg = Release|Any CPU
 		{F7C1AD4F-DF92-4616-8B9E-7E806CF8452D}.Release|x86.Build.0 = Release|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Debug|x64.Build.0 = Debug|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Debug|x86.Build.0 = Debug|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Release|x64.ActiveCfg = Release|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Release|x64.Build.0 = Release|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Release|x86.ActiveCfg = Release|Any CPU
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -140,5 +156,6 @@ Global
 		{C8154DC7-D442-43F9-B7B5-227F8F528553} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{0A9B20F2-099B-4B9F-8F07-7C4CB072381A} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{F7C1AD4F-DF92-4616-8B9E-7E806CF8452D} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{BA7B16F6-EE69-438E-9A00-8F657052FDBD} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

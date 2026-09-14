@@ -17,7 +17,7 @@ import {
   Power
 } from 'lucide-react';
 import api from '@/services/api';
-import type { Categoria, Producto, Sucursal } from '@/common/types';
+import type { Categoria, Producto } from '@/common/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSucursal } from '@/contexts/SucursalContext';
 
@@ -38,7 +38,6 @@ interface ProductoPrecio {
 }
 
 interface UpdateProductoPrecioRequest {
-  sucursalId: string;
   tipoVentaId: string;
   precioVenta: number;
 }
@@ -56,17 +55,13 @@ const COLOR_OPTIONS = [
 
 export default function CatalogoPage() {
   const { user } = useAuth();
-  const { sucursales: sucursalesPermitidas, isGlobal } = useSucursal();
+  const { sucursales: sucursalesPermitidas, selectedSucursalId, isGlobal } = useSucursal();
+  // Sucursal "dueña" del catálogo que se está editando: la seleccionada en el
+  // header si el usuario es global, o la propia si está acotado a una sola.
+  const catalogoSucursalId = isGlobal ? selectedSucursalId : (user?.sucursalId ?? null);
   const [activeTab, setActiveTab] = useState<'productos' | 'categorias'>('productos');
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
-  // Sucursales sobre las que este usuario puede fijar precios: todas si es global,
-  // solo la propia si está acotado a una sucursal.
-  const sucursales: Sucursal[] = isGlobal
-    ? sucursalesPermitidas
-    : user
-      ? [{ id: user.sucursalId, nombre: user.sucursal, direccion: '', isActive: true, createdAt: '', updatedAt: '' }]
-      : [];
   const [tiposVenta, setTiposVenta] = useState<TipoVenta[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -88,10 +83,12 @@ export default function CatalogoPage() {
     requiereCocina: false
   });
 
-  // Modal de Precios
+  // Modal de Precios — un producto vive en una sola sucursal, así que el precio
+  // también es de esa sucursal únicamente: no hay matriz por local, solo por
+  // tipo de venta (mostrador, delivery, etc.).
   const [showPriceModal, setShowPriceModal] = useState(false);
   const [selectedProductForPrices, setSelectedProductForPrices] = useState<Producto | null>(null);
-  const [pricesGrid, setPricesGrid] = useState<Record<string, Record<string, number>>>({}); // { sucursalId: { tipoVentaId: precio } }
+  const [pricesRow, setPricesRow] = useState<Record<string, number>>({}); // { tipoVentaId: precio }
   const [savingPrices, setSavingPrices] = useState(false);
   const [uniquePriceInput, setUniquePriceInput] = useState('');
 
@@ -99,9 +96,10 @@ export default function CatalogoPage() {
   const loadData = async () => {
     setLoading(true);
     try {
+      const catalogoParams = catalogoSucursalId ? { includeInactive: true, sucursalId: catalogoSucursalId } : { includeInactive: true };
       const [catsRes, prodsRes, tvsRes] = await Promise.all([
-        api.get('/categoria?includeInactive=true').catch(() => ({ data: [] })),
-        api.get('/producto?includeInactive=true').catch(() => ({ data: [] })),
+        api.get('/categoria', { params: catalogoParams }).catch(() => ({ data: [] })),
+        api.get('/producto', { params: catalogoParams }).catch(() => ({ data: [] })),
         api.get('/tipoventa?includeInactive=true').catch(() => ({ data: [] }))
       ]);
 
@@ -117,7 +115,8 @@ export default function CatalogoPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogoSucursalId]);
 
   // --- GESTION CATEGORIAS ---
 
@@ -135,12 +134,16 @@ export default function CatalogoPage() {
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!categoryForm.nombre.trim()) return;
+    if (!editingCategory && !catalogoSucursalId) {
+      alert('Seleccioná una sucursal antes de crear una categoría.');
+      return;
+    }
 
     try {
       if (editingCategory) {
         await api.put(`/categoria/${editingCategory.id}`, categoryForm);
       } else {
-        await api.post('/categoria', categoryForm);
+        await api.post('/categoria', { ...categoryForm, sucursalId: catalogoSucursalId });
       }
       setShowCategoryModal(false);
       await loadData();
@@ -199,11 +202,16 @@ export default function CatalogoPage() {
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!productForm.nombre.trim() || !productForm.categoriaId) return;
+    if (!editingProduct && !catalogoSucursalId) {
+      alert('Seleccioná una sucursal antes de crear un producto.');
+      return;
+    }
 
     try {
       const payload = {
         ...productForm,
-        alicuotaIva: Number(productForm.alicuotaIva) || 5
+        alicuotaIva: Number(productForm.alicuotaIva) || 5,
+        ...(editingProduct ? {} : { sucursalId: catalogoSucursalId })
       };
 
       if (editingProduct) {
@@ -248,28 +256,23 @@ export default function CatalogoPage() {
   const handleOpenPriceModal = async (prod: Producto) => {
     setSelectedProductForPrices(prod);
     setUniquePriceInput('');
-    
-    // Inicializar cuadrícula vacía
-    const initialGrid: Record<string, Record<string, number>> = {};
-    sucursales.forEach(s => {
-      initialGrid[s.id] = {};
-      tiposVenta.filter(t => t.isActive).forEach(t => {
-        initialGrid[s.id][t.id] = 0;
-      });
+
+    // Inicializar fila vacía (una sola sucursal: la dueña del producto)
+    const initialRow: Record<string, number> = {};
+    tiposVenta.filter(t => t.isActive).forEach(t => {
+      initialRow[t.id] = 0;
     });
 
     try {
-      // Cargar precios existentes para este producto
+      // Cargar precios existentes para este producto (siempre de su propia sucursal)
       const res = await api.get(`/productoprecio/producto/${prod.id}`);
       const dbPrices: ProductoPrecio[] = res.data || [];
-      
+
       dbPrices.forEach(p => {
-        if (initialGrid[p.sucursalId]) {
-          initialGrid[p.sucursalId][p.tipoVentaId] = p.precioVenta;
-        }
+        initialRow[p.tipoVentaId] = p.precioVenta;
       });
-      
-      setPricesGrid(initialGrid);
+
+      setPricesRow(initialRow);
       setShowPriceModal(true);
     } catch (err) {
       console.error('Error al cargar precios del producto:', err);
@@ -277,14 +280,11 @@ export default function CatalogoPage() {
     }
   };
 
-  const handlePriceChange = (sucursalId: string, tipoVentaId: string, val: string) => {
+  const handlePriceChange = (tipoVentaId: string, val: string) => {
     const numericValue = val === '' ? 0 : parseFloat(val);
-    setPricesGrid(prev => ({
+    setPricesRow(prev => ({
       ...prev,
-      [sucursalId]: {
-        ...prev[sucursalId],
-        [tipoVentaId]: isNaN(numericValue) ? 0 : numericValue
-      }
+      [tipoVentaId]: isNaN(numericValue) ? 0 : numericValue
     }));
   };
 
@@ -292,13 +292,10 @@ export default function CatalogoPage() {
     const val = parseFloat(uniquePriceInput);
     if (isNaN(val) || val < 0) return;
 
-    setPricesGrid(prev => {
+    setPricesRow(prev => {
       const updated = { ...prev };
-      sucursales.forEach(s => {
-        updated[s.id] = { ...updated[s.id] };
-        tiposVenta.filter(t => t.isActive).forEach(t => {
-          updated[s.id][t.id] = val;
-        });
+      tiposVenta.filter(t => t.isActive).forEach(t => {
+        updated[t.id] = val;
       });
       return updated;
     });
@@ -309,19 +306,9 @@ export default function CatalogoPage() {
     setSavingPrices(true);
 
     try {
-      const payload: UpdateProductoPrecioRequest[] = [];
-      
-      Object.entries(pricesGrid).forEach(([sucursalId, tvMap]) => {
-        Object.entries(tvMap).forEach(([tipoVentaId, precio]) => {
-          if (precio > 0) {
-            payload.push({
-              sucursalId,
-              tipoVentaId,
-              precioVenta: precio
-            });
-          }
-        });
-      });
+      const payload: UpdateProductoPrecioRequest[] = Object.entries(pricesRow)
+        .filter(([, precio]) => precio > 0)
+        .map(([tipoVentaId, precioVenta]) => ({ tipoVentaId, precioVenta }));
 
       await api.put(`/productoprecio/producto/${selectedProductForPrices.id}`, payload);
       setShowPriceModal(false);
@@ -772,10 +759,10 @@ export default function CatalogoPage() {
         </div>
       )}
 
-      {/* --- MODAL MATRIZ DE PRECIOS --- */}
+      {/* --- MODAL DE PRECIOS --- */}
       {showPriceModal && selectedProductForPrices && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm animate-fade-in" onClick={() => setShowPriceModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl border border-pearl-100 w-full max-w-2xl mx-4 p-6 animate-fade-in flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl border border-pearl-100 w-full max-w-lg mx-4 p-6 animate-fade-in flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center justify-between pb-4 border-b border-pearl-100 shrink-0">
               <div>
@@ -783,7 +770,9 @@ export default function CatalogoPage() {
                   <DollarSign size={16} className="text-brand-500" />
                   Asignar Precios: {selectedProductForPrices.nombre}
                 </h3>
-                <p className="text-[11px] text-pearl-400 mt-0.5">Define los valores de venta segmentados por sucursal y tipo de consumo.</p>
+                <p className="text-[11px] text-pearl-400 mt-0.5">
+                  Precio en {sucursalesPermitidas.find(s => s.id === selectedProductForPrices.sucursalId)?.nombre || user?.sucursal || 'esta sucursal'}, por tipo de consumo. El producto pertenece a una sola sucursal, así que su precio también.
+                </p>
               </div>
               <button onClick={() => setShowPriceModal(false)} className="text-pearl-400 hover:text-pearl-600 transition-colors cursor-pointer">
                 <X size={18} />
@@ -799,7 +788,7 @@ export default function CatalogoPage() {
               <div className="flex items-center gap-2">
                 <div className="relative">
                   <DollarSign size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-pearl-500 font-bold" />
-                  <input 
+                  <input
                     type="number"
                     placeholder="Ej: 3500.00"
                     value={uniquePriceInput}
@@ -807,7 +796,7 @@ export default function CatalogoPage() {
                     className="h-8 pl-6 pr-2.5 w-32 text-xs bg-white border border-pearl-200 rounded-lg outline-none focus:border-brand-400"
                   />
                 </div>
-                <button 
+                <button
                   type="button"
                   onClick={handleApplyUniquePrice}
                   className="h-8 px-3 text-xs font-semibold bg-pearl-800 text-white rounded-lg hover:bg-pearl-900 active:scale-[0.98] transition-all cursor-pointer"
@@ -817,62 +806,42 @@ export default function CatalogoPage() {
               </div>
             </div>
 
-            {/* Pricing Matrix */}
-            <div className="flex-1 overflow-y-auto mb-4 border border-pearl-100 rounded-xl overflow-hidden">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-ice-50 border-b border-pearl-100 text-[10px] font-bold text-pearl-500 uppercase">
-                    <th className="px-4 py-3 bg-ice-100 font-semibold sticky left-0 z-10">Sucursal</th>
-                    {tiposVenta.filter(t => t.isActive).map(t => (
-                      <th key={t.id} className="px-4 py-3 text-center font-semibold">
-                        {t.nombre} {t.aplicaRecargo && <span className="text-[9px] text-warning-500 font-normal">(Recargo)</span>}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-pearl-50">
-                  {sucursales.filter(s => s.isActive).map(suc => (
-                    <tr key={suc.id} className="hover:bg-brand-50/10 transition-colors">
-                      <td className="px-4 py-3 font-semibold text-pearl-800 bg-ice-50/20 w-44 sticky left-0 z-10 border-r border-pearl-50 shadow-sm">
-                        {suc.nombre}
-                      </td>
-                      {tiposVenta.filter(t => t.isActive).map(t => {
-                        const val = pricesGrid[suc.id]?.[t.id] ?? 0;
-                        return (
-                          <td key={t.id} className="px-4 py-2 text-center w-36">
-                            <div className="relative inline-block w-28">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-pearl-400 font-medium">$</span>
-                              <input 
-                                type="number"
-                                min={0}
-                                step="any"
-                                placeholder="0.00"
-                                value={val === 0 ? '' : val}
-                                onChange={e => handlePriceChange(suc.id, t.id, e.target.value)}
-                                className="w-full h-8 pl-5.5 pr-2.5 text-center text-xs font-semibold text-pearl-800 bg-white border border-pearl-200 rounded-lg outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-100"
-                              />
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
+            {/* Precios por Tipo de Venta */}
+            <div className="flex-1 overflow-y-auto mb-4 space-y-2">
+              {tiposVenta.filter(t => t.isActive).map(t => {
+                const val = pricesRow[t.id] ?? 0;
+                return (
+                  <div key={t.id} className="flex items-center justify-between gap-3 bg-ice-50/50 border border-pearl-100 rounded-lg px-3 py-2">
+                    <span className="text-xs font-semibold text-pearl-700">
+                      {t.nombre} {t.aplicaRecargo && <span className="text-[9px] text-warning-500 font-normal">(Recargo)</span>}
+                    </span>
+                    <div className="relative w-32">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-pearl-400 font-medium">$</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        placeholder="0.00"
+                        value={val === 0 ? '' : val}
+                        onChange={e => handlePriceChange(t.id, e.target.value)}
+                        className="w-full h-8 pl-5.5 pr-2.5 text-center text-xs font-semibold text-pearl-800 bg-white border border-pearl-200 rounded-lg outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-100"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
 
-                  {sucursales.filter(s => s.isActive).length === 0 && (
-                    <tr>
-                      <td colSpan={tiposVenta.length + 1} className="px-4 py-8 text-center text-pearl-400 italic">
-                        No hay sucursales activas registradas para fijar precios.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+              {tiposVenta.filter(t => t.isActive).length === 0 && (
+                <div className="px-4 py-8 text-center text-pearl-400 italic text-xs">
+                  No hay tipos de venta activos registrados para fijar precios.
+                </div>
+              )}
             </div>
 
-            {/* Matrix Help Label */}
+            {/* Help Label */}
             <div className="flex items-start gap-2 text-[10px] text-pearl-400 mb-4 px-1 shrink-0">
               <AlertCircle size={13} className="shrink-0 text-pearl-400 mt-0.5" />
-              <span>Los precios configurados con valor superior a cero se guardarán. Aquellos que se dejen vacíos o en 0.00 se omitirán o desactivarán para el respectivo local.</span>
+              <span>Los precios configurados con valor superior a cero se guardarán. Los que se dejen vacíos o en 0.00 se omitirán o desactivarán.</span>
             </div>
 
             {/* Footer Buttons */}

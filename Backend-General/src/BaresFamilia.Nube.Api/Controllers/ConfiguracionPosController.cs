@@ -1,3 +1,4 @@
+using BaresFamilia.Core.Models.Contratos.Catalogos;
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Interfaces;
 using BaresFamilia.Nube.Api.Extensions;
@@ -17,11 +18,16 @@ public class ConfiguracionPosController : ControllerBase
 {
     private readonly IService<ConfiguracionPos> _configService;
     private readonly IService<Mesa> _mesaService;
+    private readonly IMonitorSincronizacion _monitorSincronizacion;
 
-    public ConfiguracionPosController(IService<ConfiguracionPos> configService, IService<Mesa> mesaService)
+    public ConfiguracionPosController(
+        IService<ConfiguracionPos> configService,
+        IService<Mesa> mesaService,
+        IMonitorSincronizacion monitorSincronizacion)
     {
         _configService = configService;
         _mesaService = mesaService;
+        _monitorSincronizacion = monitorSincronizacion;
     }
 
     /// <summary>
@@ -42,7 +48,7 @@ public class ConfiguracionPosController : ControllerBase
     [ProducesResponseType(typeof(IEnumerable<ConfiguracionPos>), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetBySucursal(Guid sucursalId, [FromQuery] bool includeInactive = false, CancellationToken ct = default)
     {
-        SyncManagerStore.RecordPull(sucursalId, "config");
+        _monitorSincronizacion.RegistrarPull(sucursalId, TipoPull.Config);
         var configs = includeInactive
             ? await _configService.FindAsync(c => c.SucursalId == sucursalId, ct)
             : await _configService.FindAsync(c => c.SucursalId == sucursalId && c.IsActive, ct);
@@ -75,6 +81,7 @@ public class ConfiguracionPosController : ControllerBase
     /// }
     /// </summary>
     [HttpPost]
+    [Authorize(Policy = "Backoffice")]
     [ProducesResponseType(typeof(ConfiguracionPos), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] SaveConfiguracionPosRequest request, CancellationToken ct)
@@ -104,6 +111,7 @@ public class ConfiguracionPosController : ControllerBase
     /// Actualiza una configuración visual del POS existente.
     /// </summary>
     [HttpPut("{id:guid}")]
+    [Authorize(Policy = "Backoffice")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -132,6 +140,7 @@ public class ConfiguracionPosController : ControllerBase
     /// Elimina una configuración POS (borrado lógico).
     /// </summary>
     [HttpDelete("{id:guid}")]
+    [Authorize(Policy = "Backoffice")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
@@ -280,17 +289,3 @@ public class ConfiguracionPosController : ControllerBase
         catch {}
     }
 }
-
-// ═══════════════════════════════════
-// DTOs de Request
-// ═══════════════════════════════════
-
-/// <summary>
-/// DTO para crear/actualizar configuración visual del POS.
-/// ConfiguracionJson es un string JSON con estructura libre.
-/// </summary>
-public record SaveConfiguracionPosRequest(
-    Guid SucursalId,
-    string? Nombre,
-    string ConfiguracionJson
-);

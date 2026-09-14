@@ -1,3 +1,4 @@
+using BaresFamilia.Core.Models.Contratos.CuentasCorrientes;
 using BaresFamilia.Core.Models.Entities.CuentasCorrientes;
 using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.AspNetCore.Mvc;
@@ -94,7 +95,10 @@ public class ClienteController : ControllerBase
 
         _logger.LogInformation("Cliente creado localmente: {ClienteId} - {Nombre} {Apellido}", created.Id, created.Nombre, created.Apellido);
 
-        var conCuenta = await _clienteService.GetWithCuentaCorrienteAsync(created.Id, ct);
+        // Se recarga con la cuenta corriente recién creada; el cliente acaba de
+        // persistirse, así que siempre viene.
+        var conCuenta = await _clienteService.GetWithCuentaCorrienteAsync(created.Id, ct) ?? created;
+
         return CreatedAtAction(nameof(GetAll), new {
             id = conCuenta.Id,
             nombre = conCuenta.Nombre,
@@ -127,19 +131,3 @@ public class ClienteController : ControllerBase
         return NoContent();
     }
 }
-
-public record CreateClienteRequest(
-    string Nombre,
-    string Apellido,
-    string? Telefono,
-    string? Email,
-    decimal LimiteCredito
-);
-
-public record UpdateClienteRequest(
-    string Nombre,
-    string Apellido,
-    string? Telefono,
-    string? Email,
-    decimal LimiteCredito
-);

@@ -1,17 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  ArrowLeft, 
-  History, 
-  User, 
-  MoreVertical, 
-  Edit2, 
-  CreditCard, 
-  AlertCircle, 
-  Printer, 
-  Search, 
-  RefreshCw, 
-  FileText 
+import {
+  ArrowLeft,
+  User,
+  AlertCircle,
+  Printer,
+  RefreshCw,
+  FileText,
+  Edit2
 } from 'lucide-react';
 import api from '@/services/api';
 import { useAuth } from '@/contexts/AppContext';
@@ -23,33 +19,40 @@ interface ComandaItemDetail {
   cantidad: number;
   precioUnitario: number;
   productoNombre: string;
-  producto?: {
-    nombre: string;
-  };
 }
 
 interface ComandaDetail {
   id: string;
   createdAt: string;
   updatedAt: string;
+  fechaContable?: string | null;
   subtotal: number;
   descuento: number;
   total: number;
   estado: number | string; // 0 = Abierta, 1 = Cobrada, 2 = Anulada
-  usuario?: {
-    id: string;
-    nombre: string;
-  };
-  tipoVenta?: {
-    id: string;
-    nombre: string;
-  };
-  mesa?: {
-    id: string;
-    etiqueta: string;
-  };
+  usuario?: { id: string; nombre: string };
+  tipoVenta?: { id: string; nombre: string };
+  mesa?: { id: string; etiqueta: string };
+  clienteId?: string;
+  cliente?: { nombre: string; apellido: string };
   items: ComandaItemDetail[];
   pagos: any[];
+}
+
+const FILTROS = [
+  { key: 'todos', label: 'Todos' },
+  { key: 'abierta', label: 'Abiertos' },
+  { key: 'cobrada', label: 'Cerrados' },
+  { key: 'anulada', label: 'Anulados' }
+] as const;
+
+type FiltroKey = typeof FILTROS[number]['key'];
+
+function estadoNormalizado(estado: number | string): 'abierta' | 'cobrada' | 'anulada' {
+  const est = typeof estado === 'string' ? estado.toLowerCase() : estado;
+  if (est === 1 || est === 'cobrada') return 'cobrada';
+  if (est === 2 || est === 'anulada') return 'anulada';
+  return 'abierta';
 }
 
 export default function HistorialVentasScreen() {
@@ -57,31 +60,29 @@ export default function HistorialVentasScreen() {
   const { usuario } = useAuth();
   const { turnoActivo } = useCaja();
 
-  // Estados
   const [comandas, setComandas] = useState<ComandaDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
-  
-  // Filtros
-  const [searchTerm, setSearchTerm] = useState('');
-  const [estadoFilter, setEstadoFilter] = useState<'todos' | 'abierta' | 'cobrada' | 'anulada'>('todos');
 
-  // Menú de acciones
-  const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const [filtro, setFiltro] = useState<FiltroKey>('todos');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Cobro en el momento
   const [showModalCobroComanda, setShowModalCobroComanda] = useState<ComandaDetail | null>(null);
-
-  // Recarga en tiempo real
-  const [now, setNow] = useState(new Date());
 
   const fetchComandas = async () => {
     setLoading(true);
     setErrorMsg('');
     try {
       const res = await api.get('/comanda');
-      setComandas(res.data || []);
+      const data: ComandaDetail[] = res.data || [];
+      setComandas(data);
+      if (!selectedId) {
+        const fechaActual = (turnoActivo?.fechaContable || new Date().toISOString()).slice(0, 10);
+        const delDia = data.filter(c => !c.fechaContable || c.fechaContable.slice(0, 10) === fechaActual);
+        if (delDia.length > 0) {
+          setSelectedId(delDia[0].id);
+        }
+      }
     } catch (err: any) {
       console.error('Error cargando historial de comandas:', err);
       setErrorMsg('No se pudo cargar el historial de ventas. Verifique la conexión.');
@@ -92,78 +93,59 @@ export default function HistorialVentasScreen() {
 
   useEffect(() => {
     fetchComandas();
-
-    // Actualizar tiempo relativo cada 30 segundos
-    const timer = setInterval(() => {
-      setNow(new Date());
-    }, 30000);
-
-    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Cerrar dropdown al hacer click afuera
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setActiveDropdownId(null);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const formatARS = (monto: number) =>
+    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(monto);
 
-  const formatARS = (monto: number) => {
-    return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(monto);
+  const origenDe = (c: ComandaDetail) => {
+    if (c.mesa) return `Mesa ${c.mesa.etiqueta}`;
+    if (c.clienteId) return c.cliente ? `Cta. cte. ${c.cliente.nombre} ${c.cliente.apellido}` : 'Cuenta corriente';
+    return c.tipoVenta?.nombre || 'Mostrador';
   };
 
-  const getEstadoLabelAndClass = (estado: number | string) => {
-    const est = typeof estado === 'string' ? estado.toLowerCase() : estado;
-    if (est === 1 || est === 'cobrada') {
-      return {
-        label: 'Cobrada',
-        badgeClass: 'bg-success-500/10 text-success-400 border-success-500/25'
-      };
-    }
-    if (est === 2 || est === 'anulada') {
-      return {
-        label: 'Anulada',
-        badgeClass: 'bg-danger-500/10 text-danger-400 border-danger-500/25'
-      };
-    }
-    return {
-      label: 'Abierta',
-      badgeClass: 'bg-amber-500/10 text-amber-400 border-amber-500/25'
-    };
+  const detalleDe = (c: ComandaDetail) => {
+    const mozo = c.usuario ? `Atiende ${c.usuario.nombre}` : '';
+    const itemsCount = c.items?.length ? `${c.items.length} ${c.items.length === 1 ? 'ítem' : 'ítems'}` : '';
+    return [mozo, itemsCount].filter(Boolean).join(' · ');
   };
 
-  const formatTimeAgo = (createdAtStr: string, estado: number | string) => {
-    const est = typeof estado === 'string' ? estado.toLowerCase() : estado;
-    const isAbierta = est === 0 || est === 'abierta';
-    
-    const createdDate = new Date(createdAtStr);
-    const diffMs = now.getTime() - createdDate.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
+  const ESTADO_LABEL: Record<string, string> = { abierta: 'Abierto', cobrada: 'Cerrado', anulada: 'Anulado' };
+  const ESTADO_COLOR: Record<string, string> = { abierta: 'var(--acc)', cobrada: 'var(--success-500)', anulada: 'var(--danger-500)' };
 
-    if (isAbierta) {
-      if (diffMins < 1) return 'Hace instantes';
-      if (diffMins < 60) return `Hace ${diffMins} min`;
-      const diffHours = Math.floor(diffMins / 60);
-      if (diffHours < 24) return `Hace ${diffHours} h`;
-      return createdDate.toLocaleDateString('es-AR');
-    } else {
-      return createdDate.toLocaleString('es-AR', {
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-    }
+  // Sólo pedidos de la fecha contable vigente (la del turno activo, o el día de hoy si
+  // no hay turno abierto). Las cuentas corrientes abiertas quedan exentas de turno/fecha
+  // contable hasta que se cierran, así que se muestran siempre mientras estén abiertas.
+  const fechaContableActual = (turnoActivo?.fechaContable || new Date().toISOString()).slice(0, 10);
+  const comandasDelDia = comandas.filter(c =>
+    !c.fechaContable || c.fechaContable.slice(0, 10) === fechaContableActual
+  );
+
+  const lista = filtro === 'todos' ? comandasDelDia : comandasDelDia.filter(c => estadoNormalizado(c.estado) === filtro);
+  const counts: Record<FiltroKey, number> = {
+    todos: comandasDelDia.length,
+    abierta: comandasDelDia.filter(c => estadoNormalizado(c.estado) === 'abierta').length,
+    cobrada: comandasDelDia.filter(c => estadoNormalizado(c.estado) === 'cobrada').length,
+    anulada: comandasDelDia.filter(c => estadoNormalizado(c.estado) === 'anulada').length
   };
 
-  // Acciones de Comanda
+  const cobradas = comandasDelDia.filter(c => estadoNormalizado(c.estado) === 'cobrada');
+  const abiertas = comandasDelDia.filter(c => estadoNormalizado(c.estado) === 'abierta');
+  const anuladas = comandasDelDia.filter(c => estadoNormalizado(c.estado) === 'anulada');
+  const kpis = [
+    { label: 'Vendido en el turno', value: formatARS(cobradas.reduce((a, c) => a + c.total, 0)), sub: `${cobradas.length} pedidos cerrados`, accent: 'var(--acc)' },
+    { label: 'Abierto en salón', value: formatARS(abiertas.reduce((a, c) => a + c.total, 0)), sub: `${abiertas.length} pedidos sin cerrar`, accent: 'var(--slate-500)' },
+    { label: 'Ticket promedio', value: formatARS(cobradas.length ? Math.round(cobradas.reduce((a, c) => a + c.total, 0) / cobradas.length) : 0), sub: 'Sobre pedidos cerrados', accent: 'var(--success-500)' },
+    { label: 'Anulado', value: formatARS(anuladas.reduce((a, c) => a + c.total, 0)), sub: `${anuladas.length} comprobantes anulados`, accent: 'var(--danger-500)' }
+  ];
+
+  const sel = comandasDelDia.find(c => c.id === selectedId && (filtro === 'todos' || estadoNormalizado(c.estado) === filtro));
+  const selEstado = sel ? estadoNormalizado(sel.estado) : null;
+
   const handleEditar = (comanda: ComandaDetail) => {
-    const mesaQuery = comanda.mesa 
-      ? `&mesaId=${comanda.mesa.id}&mesaName=${encodeURIComponent(comanda.mesa.etiqueta)}` 
+    const mesaQuery = comanda.mesa
+      ? `&mesaId=${comanda.mesa.id}&mesaName=${encodeURIComponent(comanda.mesa.etiqueta)}`
       : '';
     navigate(`/pos?comandaId=${comanda.id}${mesaQuery}`);
   };
@@ -173,19 +155,14 @@ export default function HistorialVentasScreen() {
       alert('Debe tener un turno de caja abierto para registrar cobros.');
       return;
     }
-    setActiveDropdownId(null);
     setShowModalCobroComanda(comanda);
   };
 
   const handleConfirmarCobro = async (comandaId: string, pagos: { metodoPagoId: string; monto: number }[]) => {
     if (!turnoActivo) return;
     try {
-      await api.post(`/comanda/${comandaId}/cobrar`, {
-        turnoCajaId: turnoActivo.turnoId,
-        pagos
-      });
+      await api.post(`/comanda/${comandaId}/cobrar`, { turnoCajaId: turnoActivo.turnoId, pagos });
       setShowModalCobroComanda(null);
-      alert('✓ Cobro procesado correctamente.');
       fetchComandas();
     } catch (err: any) {
       console.error('Error al cobrar comanda desde historial:', err);
@@ -196,23 +173,19 @@ export default function HistorialVentasScreen() {
   };
 
   const handleAnular = async (comanda: ComandaDetail) => {
-    setActiveDropdownId(null);
-    const confirmacion = window.confirm(`¿Está seguro de que desea ANULAR la comanda ${comanda.id.slice(0, 8).toUpperCase()}?\nEsta acción es irreversible.`);
+    const confirmacion = window.confirm(`¿Está seguro de que desea ANULAR el pedido ${comanda.id.slice(0, 8).toUpperCase()}?\nEsta acción es irreversible.`);
     if (!confirmacion) return;
-
     try {
       await api.post(`/comanda/${comanda.id}/anular`);
-      alert('✓ Comanda anulada con éxito.');
       fetchComandas();
     } catch (err: any) {
       console.error('Error al anular la comanda:', err);
       const msg = err.response?.data?.message || 'Error de conexión';
-      alert(`No se pudo anular la comanda: ${msg}`);
+      alert(`No se pudo anular el pedido: ${msg}`);
     }
   };
 
   const handleImprimirNoFiscal = async (comanda: ComandaDetail) => {
-    setActiveDropdownId(null);
     try {
       await api.post(`/comanda/${comanda.id}/imprimir-no-fiscal`);
       alert('✓ Ticket X (No Fiscal) enviado a la cola de impresión.');
@@ -223,275 +196,187 @@ export default function HistorialVentasScreen() {
     }
   };
 
-  // Filtrado y Búsqueda
-  const filteredComandas = comandas.filter(c => {
-    // 1. Filtro de búsqueda (ID de comanda, mozo o mesa)
-    const idMatch = c.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const mozoMatch = c.usuario?.nombre.toLowerCase().includes(searchTerm.toLowerCase());
-    const mesaMatch = c.mesa?.etiqueta.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchSearch = idMatch || mozoMatch || mesaMatch;
-
-    // 2. Filtro de estado
-    const est = typeof c.estado === 'string' ? c.estado.toLowerCase() : c.estado;
-    let matchEstado = true;
-    if (estadoFilter === 'abierta') {
-      matchEstado = est === 0 || est === 'abierta';
-    } else if (estadoFilter === 'cobrada') {
-      matchEstado = est === 1 || est === 'cobrada';
-    } else if (estadoFilter === 'anulada') {
-      matchEstado = est === 2 || est === 'anulada';
-    }
-
-    return matchSearch && matchEstado;
-  });
+  const actBtn = 'h-[54px] w-full rounded-[var(--radius-btn)] text-[13.5px] font-semibold leading-tight border';
 
   return (
     <div className="h-screen w-screen flex flex-col bg-slate-950 text-text-primary overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 bg-surface-base border-b border-border-default shadow-md shrink-0">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => navigate('/pos-admin')} 
-            className="touch-btn p-2 rounded-xl bg-slate-800 text-text-secondary hover:text-text-primary hover:bg-slate-700 border border-border-default transition-all"
-            title="Volver al Panel Admin"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div className="h-6 w-[1px] bg-border-default mx-1" />
-          <div className="w-9 h-9 bg-slate-850 border border-border-default rounded-[var(--radius-btn)] flex items-center justify-center text-text-secondary">
-            <History className="w-4 h-4" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold tracking-tight">Historial de Ventas</h1>
-            <p className="text-xs text-text-muted">Consulta, cobra, anula o imprime comprobantes de comandas de la sucursal</p>
-          </div>
+      <header className="flex items-center gap-3 px-3.5 py-2 min-h-[56px] bg-surface-base border-b border-border-default shrink-0">
+        <div className="flex items-center gap-2.5">
+          <div className="w-4 h-4 border-2 border-amber-500 rounded-[5px] flex-shrink-0" />
+          <span className="text-sm font-semibold tracking-tight text-text-primary">Bares Familia</span>
         </div>
 
+        <div className="flex-1" />
+
         {usuario && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-btn)] bg-slate-900/40 border border-border-default/50">
-            <User className="w-4 h-4 text-text-muted" />
-            <span className="text-sm font-semibold text-text-secondary">{usuario.nombre}</span>
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-info-500/5 text-info-400 border border-info-500/10">
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-btn)] bg-surface-overlay border border-border-default">
+            <User className="w-3.5 h-3.5 text-text-muted" />
+            <span className="text-xs font-semibold text-text-secondary">{usuario.nombre}</span>
+            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider text-info-500 border border-info-500/30 font-mono">
               {usuario.rol}
             </span>
           </div>
         )}
+
+        <button
+          onClick={fetchComandas}
+          className="touch-btn h-12 w-12 flex items-center justify-center rounded-[var(--radius-btn)] bg-surface-base border border-border-default text-text-muted hover:border-amber-500 hover:text-amber-500 min-h-0"
+          title="Refrescar"
+        >
+          <RefreshCw className="w-4 h-4" />
+        </button>
       </header>
 
-      {/* Main Workspace */}
-      <main className="flex-1 flex flex-col p-6 overflow-hidden gap-6 bg-slate-900/20">
-        
-        {/* Barra de Filtros y Búsqueda */}
-        <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-slate-900 border border-border-default rounded-[var(--radius-card)] p-4 shrink-0">
-          <div className="w-full md:w-96 relative">
-            <Search className="w-4 h-4 text-text-muted absolute left-4 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Buscar por ID, mesa o mozo..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="w-full h-11 bg-slate-950/60 border border-border-strong rounded-[var(--radius-input)] pl-11 pr-4 text-sm font-medium text-text-primary placeholder:text-text-muted focus:outline-none focus:border-amber-500/50"
-            />
-          </div>
-
-          <div className="flex items-center gap-2 w-full md:w-auto">
-            {/* Filtros de Estado */}
-            <div className="flex bg-slate-950/60 border border-border-strong rounded-[var(--radius-btn)] p-1 w-full md:w-auto">
-              {(['todos', 'abierta', 'cobrada', 'anulada'] as const).map(f => (
-                <button
-                  key={f}
-                  onClick={() => setEstadoFilter(f)}
-                  className={`touch-btn flex-1 md:flex-none px-4 py-1.5 rounded-[3px] text-xs font-semibold transition-all uppercase cursor-pointer ${
-                    estadoFilter === f
-                      ? 'bg-slate-800 text-text-primary border border-border-strong'
-                      : 'text-text-secondary hover:text-text-primary hover:bg-slate-900 border border-transparent'
-                  }`}
-                >
-                  {f}
-                </button>
-              ))}
+      <main className="flex-1 flex flex-col min-h-0">
+        {/* KPIs */}
+        <div className="flex-shrink-0 px-4.5 pt-3.5 grid grid-cols-2 md:grid-cols-4 gap-2.5">
+          {kpis.map(k => (
+            <div key={k.label} className="flex flex-col gap-0.5 p-3 rounded-[var(--radius-card)] bg-surface-base border border-border-default" style={{ borderTop: `2px solid ${k.accent}` }}>
+              <span className="mono-label">{k.label}</span>
+              <span className="font-mono text-[21px] font-semibold leading-tight tracking-tight">{k.value}</span>
+              <span className="text-[11px] text-text-muted truncate">{k.sub}</span>
             </div>
-
-            {/* Botón Refrescar */}
-            <button
-              onClick={fetchComandas}
-              className="touch-btn p-2.5 bg-slate-950/60 border border-border-strong hover:bg-slate-900 text-text-secondary hover:text-text-primary rounded-[var(--radius-btn)] cursor-pointer"
-              title="Refrescar Historial"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
-          </div>
+          ))}
         </div>
 
-        {/* Tabla / Contenedor principal de datos */}
-        <div className="flex-1 bg-slate-900 border border-border-default rounded-[var(--radius-card)] flex flex-col overflow-hidden relative">
-          {loading ? (
-            <div className="flex-1 flex flex-col items-center justify-center">
-              <div className="w-9 h-9 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-              <p className="mt-4 text-sm text-text-muted">Cargando comandas...</p>
-            </div>
-          ) : errorMsg ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-              <AlertCircle className="w-10 h-10 text-danger-500 mb-4" />
-              <h3 className="text-base font-bold">Error de Carga</h3>
-              <p className="text-sm text-text-muted mt-2 max-w-sm">{errorMsg}</p>
+        {/* Filtros */}
+        <div className="flex-shrink-0 flex items-center gap-2 px-4.5 py-3 overflow-x-auto">
+          <button
+            onClick={() => navigate('/')}
+            className="touch-btn h-12 px-3 flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-surface-base text-text-secondary hover:border-amber-500 hover:text-amber-500 border border-border-default text-[12.5px] font-medium min-h-0 flex-shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Mapa
+          </button>
+          <span className="w-px h-[22px] bg-border-default flex-shrink-0" />
+          {FILTROS.map(f => {
+            const on = filtro === f.key;
+            return (
               <button
-                onClick={fetchComandas}
-                className="touch-btn mt-6 px-6 py-2.5 rounded-[var(--radius-btn)] bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition-all"
+                key={f.key}
+                onClick={() => setFiltro(f.key)}
+                className={`touch-btn h-12 px-4 flex-shrink-0 whitespace-nowrap rounded-[var(--radius-btn)] text-[13.5px] font-semibold min-h-0 border ${
+                  on ? 'bg-amber-500 border-amber-500 text-white' : 'bg-surface-base border-border-default text-text-secondary'
+                }`}
               >
-                Reintentar
+                {f.label} <span className="opacity-70">{counts[f.key]}</span>
               </button>
+            );
+          })}
+        </div>
+
+        {/* Lista + detalle */}
+        <div className="flex-1 flex min-h-0">
+          <div className="flex-1 min-h-0 overflow-y-auto px-4.5 pb-4.5 flex flex-col gap-1.5">
+            <div className="grid grid-cols-[70px_minmax(0,1fr)_100px_80px_100px] gap-2.5 px-3 pb-1.5 mono-label">
+              <span>Nº</span><span>Origen</span><span>Estado</span><span>Hora</span><span className="text-right">Importe</span>
             </div>
-          ) : filteredComandas.length === 0 ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
-              <FileText className="w-16 h-16 text-text-muted opacity-20 mb-4" />
-              <h3 className="text-base font-bold text-text-secondary">No se encontraron comandas</h3>
-              <p className="text-xs text-text-muted mt-1 max-w-xs">Intente cambiar los filtros o realizar otra búsqueda.</p>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-border-default/60 bg-slate-950/40 text-[10px] font-bold uppercase text-text-muted tracking-wider sticky top-0 z-10">
-                    <th className="py-4 px-6">ID / Fecha</th>
-                    <th className="py-4 px-6">Empleado</th>
-                    <th className="py-4 px-6">Canal de Venta</th>
-                    <th className="py-4 px-6">Mesa</th>
-                    <th className="py-4 px-6">Tiempo Abierta</th>
-                    <th className="py-4 px-6 text-right">Monto</th>
-                    <th className="py-4 px-6">Estado</th>
-                    <th className="py-4 px-6 text-center">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-default/40 text-sm font-medium">
-                  {filteredComandas.map(comanda => {
-                    const statusConfig = getEstadoLabelAndClass(comanda.estado);
-                    const isAbierta = comanda.estado === 0 || comanda.estado === 'Abierta';
-                    const isAnulada = comanda.estado === 2 || comanda.estado === 'Anulada';
-                    
-                    return (
-                      <tr key={comanda.id} className="hover:bg-slate-800/20 transition-all group">
-                        {/* ID / Fecha */}
-                        <td className="py-4.5 px-6">
-                          <span className="font-mono font-bold text-text-primary block tracking-tight">
-                            {comanda.id.slice(0, 8).toUpperCase()}
-                          </span>
-                          <span className="text-[10px] text-text-muted block mt-0.5">
-                            {new Date(comanda.createdAt).toLocaleDateString('es-AR')}
-                          </span>
-                        </td>
 
-                        {/* Empleado */}
-                        <td className="py-4.5 px-6 text-text-secondary">
-                          {comanda.usuario?.nombre || 'Administrador'}
-                        </td>
+            {loading ? (
+              <div className="flex-1 flex flex-col items-center justify-center py-16">
+                <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : errorMsg ? (
+              <div className="flex flex-col items-center justify-center p-10 text-center gap-3">
+                <AlertCircle className="w-8 h-8 text-danger-500" />
+                <p className="text-sm text-text-muted max-w-sm">{errorMsg}</p>
+                <button onClick={fetchComandas} className="touch-btn h-11 px-5 rounded-[var(--radius-btn)] bg-amber-500 border border-amber-500 text-white text-sm font-semibold min-h-0">
+                  Reintentar
+                </button>
+              </div>
+            ) : lista.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center py-16 text-center gap-2">
+                <FileText className="w-8 h-8 text-text-muted opacity-30" />
+                <p className="text-sm text-text-muted">No hay pedidos con este filtro.</p>
+              </div>
+            ) : (
+              lista.map(c => {
+                const est = estadoNormalizado(c.estado);
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setSelectedId(c.id)}
+                    className="grid grid-cols-[70px_minmax(0,1fr)_100px_80px_100px] gap-2.5 items-center px-3 py-3 rounded-[var(--radius-btn)] text-left bg-surface-base border"
+                    style={{ borderColor: c.id === selectedId ? 'var(--acc)' : 'var(--border-default)' }}
+                  >
+                    <span className="font-mono text-[12.5px] font-semibold">{c.id.slice(0, 6).toUpperCase()}</span>
+                    <span className="min-w-0 flex flex-col gap-0.5">
+                      <span className="text-[15px] font-semibold truncate">{origenDe(c)}</span>
+                      <span className="text-[11px] text-text-muted truncate">{detalleDe(c)}</span>
+                    </span>
+                    <span className="font-mono text-[10px] font-semibold uppercase tracking-wider" style={{ color: ESTADO_COLOR[est] }}>
+                      {ESTADO_LABEL[est]}
+                    </span>
+                    <span className="font-mono text-[11.5px] text-text-muted">
+                      {new Date(c.createdAt).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                    <span className="font-mono text-[13px] font-semibold text-right">{formatARS(c.total)}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
 
-                        {/* Canal de Venta */}
-                        <td className="py-4.5 px-6 text-text-muted font-semibold uppercase text-[10px] tracking-wider">
-                          {comanda.tipoVenta?.nombre || 'Salón'}
-                        </td>
+          {sel && (
+            <aside className="flex-shrink-0 w-[340px] min-w-[280px] bg-surface-base border-l border-border-default flex flex-col min-h-0">
+              <div className="flex-shrink-0 p-4 border-b border-border-default flex flex-col gap-0.5">
+                <span className="mono-label">Pedido {sel.id.slice(0, 6).toUpperCase()}</span>
+                <span className="text-[15px] font-semibold">{origenDe(sel)}</span>
+                <span className="font-mono text-[11px] text-text-muted">
+                  {ESTADO_LABEL[selEstado!]} · {new Date(sel.createdAt).toLocaleString('es-AR')}
+                </span>
+              </div>
 
-                        {/* Mesa */}
-                        <td className="py-4.5 px-6 text-text-secondary font-semibold">
-                          {comanda.mesa?.etiqueta || '—'}
-                        </td>
+              <div className="flex-1 min-h-[96px] overflow-y-auto p-4 flex flex-col gap-2">
+                {(sel.items || []).map(l => (
+                  <div key={l.id} className="flex items-baseline justify-between gap-2.5">
+                    <span className="text-[12.5px] min-w-0 truncate">{l.cantidad} × {l.productoNombre}</span>
+                    <span className="font-mono text-[12.5px] font-semibold whitespace-nowrap">{formatARS(l.cantidad * l.precioUnitario)}</span>
+                  </div>
+                ))}
+              </div>
 
-                        {/* Tiempo Abierta */}
-                        <td className="py-4.5 px-6 text-text-muted">
-                          {formatTimeAgo(comanda.createdAt, comanda.estado)}
-                        </td>
+              <div className="flex-shrink-0 border-t border-border-default p-4 flex flex-col gap-2.5">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[13px] font-semibold">Total</span>
+                  <span className="font-mono text-[22px] font-semibold tracking-tight">{formatARS(sel.total)}</span>
+                </div>
 
-                        {/* Monto */}
-                        <td className="py-4.5 px-6 text-right font-bold text-text-primary tabular-nums">
-                          {formatARS(comanda.total)}
-                        </td>
-
-                        {/* Estado */}
-                        <td className="py-4.5 px-6">
-                          <span className={`px-2 py-1 rounded-[3px] text-[10px] font-bold uppercase border ${statusConfig.badgeClass}`}>
-                            {statusConfig.label}
-                          </span>
-                        </td>
-
-                        {/* Acciones */}
-                        <td className="py-4.5 px-6 text-center relative">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveDropdownId(activeDropdownId === comanda.id ? null : comanda.id);
-                            }}
-                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-text-secondary hover:text-text-primary border border-border-default/50 cursor-pointer active:scale-95 transition-all inline-flex items-center"
-                          >
-                            <MoreVertical className="w-4.5 h-4.5" />
-                          </button>
-
-                          {/* Dropdown Menu */}
-                          {activeDropdownId === comanda.id && (
-                            <div 
-                              ref={dropdownRef}
-                              className="absolute right-12 top-1/2 -translate-y-1/2 z-50 w-52 rounded-[var(--radius-card)] bg-slate-900 border border-border-strong shadow-[var(--shadow-modal)] p-1.5 flex flex-col gap-0.5 text-left animate-fade-in"
-                            >
-                              {/* Editar */}
-                              <button
-                                onClick={() => handleEditar(comanda)}
-                                disabled={!isAbierta}
-                                className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold flex items-center gap-2.5 transition-all
-                                  ${isAbierta 
-                                    ? 'text-text-primary hover:bg-slate-800 hover:text-amber-400 cursor-pointer' 
-                                    : 'text-text-muted opacity-40 cursor-not-allowed'}
-                                `}
-                              >
-                                <Edit2 className="w-4 h-4" />
-                                Editar Orden
-                              </button>
-
-                              {/* Cobrar */}
-                              <button
-                                onClick={() => handleCobrarEnElMomento(comanda)}
-                                disabled={!isAbierta}
-                                className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold flex items-center gap-2.5 transition-all
-                                  ${isAbierta 
-                                    ? 'text-success-400 hover:bg-success-500/10 cursor-pointer' 
-                                    : 'text-text-muted opacity-40 cursor-not-allowed'}
-                                `}
-                              >
-                                <CreditCard className="w-4 h-4" />
-                                Cobrar al Instante
-                              </button>
-
-                              {/* Anular */}
-                              <button
-                                onClick={() => handleAnular(comanda)}
-                                disabled={!isAbierta || isAnulada}
-                                className={`w-full py-2.5 px-3 rounded-lg text-xs font-bold flex items-center gap-2.5 transition-all
-                                  ${isAbierta && !isAnulada 
-                                    ? 'text-danger-400 hover:bg-danger-500/10 cursor-pointer' 
-                                    : 'text-text-muted opacity-40 cursor-not-allowed'}
-                                `}
-                              >
-                                <AlertCircle className="w-4 h-4" />
-                                Anular Comanda
-                              </button>
-
-                              <div className="h-[1px] bg-border-default/50 my-1" />
-
-                              {/* Imprimir Ticket X */}
-                              <button
-                                onClick={() => handleImprimirNoFiscal(comanda)}
-                                className="w-full py-2.5 px-3 rounded-lg text-xs font-bold flex items-center gap-2.5 text-sky-400 hover:bg-sky-500/10 transition-all cursor-pointer"
-                              >
-                                <Printer className="w-4 h-4" />
-                                Ticket X (No Fiscal)
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {selEstado === 'abierta' && (
+                    <>
+                      <button onClick={() => handleEditar(sel)} className={`${actBtn} bg-amber-500 border-amber-500 text-white col-span-2 flex items-center justify-center gap-1.5`}>
+                        <Edit2 className="w-4 h-4" />
+                        Abrir en punto de venta
+                      </button>
+                      <button onClick={() => handleCobrarEnElMomento(sel)} className={`${actBtn} bg-surface-base border-border-default text-text-primary hover:border-success-500 hover:text-success-500`}>
+                        Cobrar y cerrar
+                      </button>
+                      <button onClick={() => handleAnular(sel)} className={`${actBtn} bg-surface-base border-border-default text-danger-500 hover:border-danger-500`}>
+                        Anular pedido
+                      </button>
+                    </>
+                  )}
+                  {selEstado === 'cobrada' && (
+                    <>
+                      <button onClick={() => handleImprimirNoFiscal(sel)} className={`${actBtn} bg-amber-500 border-amber-500 text-white col-span-2 flex items-center justify-center gap-1.5`}>
+                        <Printer className="w-4 h-4" />
+                        Reimprimir comprobante
+                      </button>
+                      <button onClick={() => handleAnular(sel)} className={`${actBtn} bg-surface-base border-border-default text-danger-500 hover:border-danger-500 col-span-2`}>
+                        Anular con autorización
+                      </button>
+                    </>
+                  )}
+                  {selEstado === 'anulada' && (
+                    <div className="col-span-2 text-center text-[12.5px] text-text-muted py-2">
+                      Este pedido fue anulado.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </aside>
           )}
         </div>
       </main>
@@ -509,3 +394,4 @@ export default function HistorialVentasScreen() {
     </div>
   );
 }
+

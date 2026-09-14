@@ -17,6 +17,7 @@ export default function PosScreen() {
   const mesaName = searchParams.get('mesaName');
   const comandaIdParam = searchParams.get('comandaId');
   const clienteNombre = searchParams.get('clienteNombre');
+  const origen = searchParams.get('origen');
  
   useEffect(() => {
     const loadOpenComanda = async () => {
@@ -28,7 +29,13 @@ export default function PosScreen() {
           if (openComanda) {
             const mappedItems = (openComanda.items || []).map((i: any) => ({
               id: i.id,
-              producto: i.producto,
+              producto: {
+                id: i.producto?.id,
+                nombre: i.producto?.nombre,
+                categoriaId: i.producto?.categoriaId,
+                disponible: true,
+                precio: i.precioUnitario
+              },
               cantidad: i.cantidad,
               subtotal: i.cantidad * i.precioUnitario,
               cancelado: i.cancelado
@@ -54,7 +61,13 @@ export default function PosScreen() {
           const openComanda = comandas[0];
           const mappedItems = (openComanda.items || []).map((i: any) => ({
             id: i.id,
-            producto: i.producto,
+            producto: {
+              id: i.producto?.id,
+              nombre: i.producto?.nombre,
+              categoriaId: i.producto?.categoriaId,
+              disponible: true,
+              precio: i.precioUnitario
+            },
             cantidad: i.cantidad,
             subtotal: i.cantidad * i.precioUnitario
           }));
@@ -78,64 +91,71 @@ export default function PosScreen() {
  
   return (
     <div className="h-screen w-screen flex flex-col bg-slate-950 overflow-hidden">
-      {/* Top Bar - Header Glass/Solid mix */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-3 bg-surface-base border-b border-border-default flex-shrink-0 shadow-sm">
-        <div className="flex items-center gap-2.5">
-          <h1 className="text-sm font-bold tracking-tight text-text-primary">
-            Bares <span className="text-text-secondary font-semibold">Familia</span>
-          </h1>
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-text-muted bg-slate-850 px-2 py-0.5 rounded-[3px] border border-border-default/50">
-            POS
-          </span>
-          <span className="w-px h-4 bg-border-default mx-0.5" />
-          {mesaName && (
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary bg-slate-850 px-2.5 py-1 rounded-[3px] border border-border-default/60">
-              Mesa {decodeURIComponent(mesaName)}
-            </span>
-          )}
-          {clienteNombre && (
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-cyan-400 bg-cyan-500/5 px-2.5 py-1 rounded-[3px] border border-cyan-500/25">
-              Cuenta: {decodeURIComponent(clienteNombre)}
-            </span>
-          )}
-          {turnoActivo && (
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary bg-slate-850 px-2.5 py-1 rounded-[3px] border border-border-default/60 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-success-500" />
-              {new Date(turnoActivo.fechaContable).toLocaleDateString('es-AR')} · Turno {turnoActivo.turno}
-            </span>
-          )}
+      {/* Top Bar */}
+      <header className="flex items-center flex-wrap gap-y-2 gap-x-3 px-3.5 py-2 min-h-[56px] bg-surface-base border-b border-border-default flex-shrink-0">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-4 h-4 border-2 border-amber-500 rounded-[5px] flex-shrink-0" />
+          <span className="text-sm font-semibold tracking-tight text-text-primary truncate">Bares Familia</span>
         </div>
- 
-        <div className="flex items-center gap-2">
-          {/* Botón de cambio de Tema Claro/Oscuro */}
-          <button 
-            onClick={toggleTheme}
-            className="touch-btn flex items-center justify-center w-[38px] h-[38px] rounded-[var(--radius-btn)] bg-slate-900/80 text-text-secondary hover:text-text-primary hover:bg-slate-800 border border-border-default/60 transition-all duration-150 shadow-sm"
-            title={theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-cyan-500" />}
-          </button>
 
-          <button 
-            onClick={() => navigate('/')} 
-            className="touch-btn flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-btn)] bg-slate-900/80 text-text-secondary hover:text-text-primary hover:bg-slate-800 border border-border-default transition-all duration-200 text-xs font-bold min-h-[38px] shadow-sm"
+        {mesaName && (
+          <span className="text-[10.5px] font-semibold uppercase tracking-wide text-text-secondary bg-surface-overlay px-2.5 py-1 rounded-[8px] border border-border-default font-mono">
+            Mesa {decodeURIComponent(mesaName)}
+          </span>
+        )}
+        {clienteNombre && (
+          <span className="text-[10.5px] font-semibold uppercase tracking-wide text-cyan-500 bg-surface-overlay px-2.5 py-1 rounded-[8px] border border-cyan-500/40 font-mono">
+            Cuenta: {decodeURIComponent(clienteNombre)}
+          </span>
+        )}
+        {!mesaName && !clienteNombre && origen === 'rapida' && (
+          <span className="text-[10.5px] font-semibold uppercase tracking-wide text-text-secondary bg-surface-overlay px-2.5 py-1 rounded-[8px] border border-border-default font-mono">
+            Orden rápida
+          </span>
+        )}
+        {!mesaName && !clienteNombre && origen === 'delivery' && (
+          <span className="text-[10.5px] font-semibold uppercase tracking-wide text-amber-500 bg-surface-overlay px-2.5 py-1 rounded-[8px] border border-amber-500/40 font-mono">
+            Delivery
+          </span>
+        )}
+        {turnoActivo && (
+          <span className="text-[10.5px] font-semibold uppercase tracking-wide text-text-secondary bg-surface-overlay px-2.5 py-1 rounded-[8px] border border-border-default flex items-center gap-1.5 font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-success-500" />
+            {new Date(turnoActivo.fechaContable).toLocaleDateString('es-AR')} · Turno {turnoActivo.turno}
+          </span>
+        )}
+
+        <div className="flex-1" />
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/')}
+            className="touch-btn flex items-center gap-1.5 h-12 px-3 rounded-[var(--radius-btn)] bg-surface-base text-text-primary hover:border-amber-500 hover:text-amber-500 border border-border-default text-[12.5px] font-medium min-h-0"
           >
-            <LayoutGrid className="w-4 h-4 text-amber-500" />
+            <LayoutGrid className="w-4 h-4" />
             Volver al Salón
           </button>
- 
+
           {usuario && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-btn)] bg-slate-900/40 border border-border-default/50 shadow-sm">
-              <User className="w-4 h-4 text-text-muted" />
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-btn)] bg-surface-overlay border border-border-default">
+              <User className="w-3.5 h-3.5 text-text-muted" />
               <span className="text-xs font-semibold text-text-secondary">{usuario.nombre}</span>
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-info-500/5 text-info-400 border border-info-500/10">
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider text-info-500 border border-info-500/30 font-mono">
                 {usuario.rol}
               </span>
             </div>
           )}
-          
+
+          <button
+            onClick={toggleTheme}
+            className="touch-btn w-12 h-12 flex items-center justify-center rounded-[var(--radius-btn)] bg-surface-base border border-border-default text-text-muted hover:border-amber-500 hover:text-amber-500 min-h-0"
+            title={theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+
           <button id="btn-logout" onClick={handleLogout}
-            className="touch-btn flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-btn)] bg-slate-900/80 text-text-muted hover:text-danger-400 hover:bg-danger-500/5 border border-border-default transition-all duration-200 text-xs font-bold min-h-[38px] shadow-sm">
+            className="touch-btn flex items-center gap-1.5 h-12 px-3 rounded-[var(--radius-btn)] bg-surface-base text-text-muted hover:border-danger-500 hover:text-danger-500 border border-border-default text-[12.5px] font-medium min-h-0">
             <LogOut className="w-4 h-4" />
             Salir
           </button>

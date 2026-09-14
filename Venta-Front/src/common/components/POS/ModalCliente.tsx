@@ -69,24 +69,22 @@ export const ModalCliente = ({ onSeleccionar, onCancelar }: ModalClienteProps) =
     }
   };
 
-  const inputClass = "w-full px-3.5 h-11 bg-slate-950/60 border border-border-default rounded-[var(--radius-input)] text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-amber-500/40 focus:ring-1 focus:ring-amber-500/20 transition-all duration-150";
+  const inputClass = "w-full px-3.5 h-11 bg-surface-overlay border border-border-default rounded-[var(--radius-input)] text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-amber-500";
 
   return (
     <div className="fixed inset-0 z-[52] flex items-center justify-center animate-modal-backdrop"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.7)', backdropFilter: 'blur(10px)' }}>
-      <div className="w-full max-w-lg mx-4 max-h-[85vh] rounded-[var(--radius-card)] bg-slate-900 border border-border-strong shadow-[var(--shadow-modal)] animate-modal-content flex flex-col overflow-hidden">
+      style={{ backgroundColor: 'rgba(8, 9, 11, 0.55)' }}>
+      <div className="w-full max-w-lg mx-4 max-h-[85vh] rounded-[14px] bg-surface-base border border-border-default shadow-modal animate-modal-content flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border-default flex-shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-[var(--radius-btn)] bg-cyan-500/10 border border-cyan-500/25 flex items-center justify-center">
-              <UserRound className="w-4 h-4 text-cyan-500" />
-            </div>
-            <h2 className="text-base font-bold text-text-primary">
+            <UserRound className="w-4 h-4 text-cyan-500" />
+            <h2 className="text-[14.5px] font-semibold text-text-primary">
               {showForm ? 'Nuevo Cliente' : 'Seleccionar Cliente'}
             </h2>
           </div>
           <button onClick={onCancelar}
-            className="touch-btn p-1.5 rounded-[var(--radius-btn)] bg-slate-950/60 text-text-muted hover:text-text-primary hover:bg-slate-850 border border-border-default/60 transition-all">
+            className="touch-btn w-9 h-9 rounded-[var(--radius-btn)] bg-surface-base text-text-muted hover:text-text-primary border border-border-default flex items-center justify-center min-h-0 min-w-0">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -128,10 +126,10 @@ export const ModalCliente = ({ onSeleccionar, onCancelar }: ModalClienteProps) =
                     <button
                       key={c.id}
                       onClick={() => onSeleccionar(c)}
-                      className="touch-btn w-full p-3 bg-slate-950/50 hover:bg-slate-850 border border-border-default/60 hover:border-border-strong rounded-[var(--radius-btn)] text-left transition-all active:scale-[0.99]"
+                      className="touch-btn w-full p-3 bg-surface-base hover:border-amber-500 border border-border-default rounded-[var(--radius-btn)] text-left active:scale-[0.99]"
                     >
                       <div className="font-semibold text-sm text-text-primary">{c.nombre} {c.apellido}</div>
-                      <div className="text-xs text-text-muted mt-0.5">Saldo: {formatARS(c.saldoActual)}</div>
+                      <div className="text-xs text-text-muted mt-0.5 font-mono">Saldo: {formatARS(c.saldoActual)}</div>
                     </button>
                   ))}
                 </div>
@@ -142,7 +140,7 @@ export const ModalCliente = ({ onSeleccionar, onCancelar }: ModalClienteProps) =
             <div className="p-3 border-t border-border-default flex-shrink-0">
               <button
                 onClick={() => { setShowForm(true); setError(''); }}
-                className="touch-btn w-full flex items-center justify-center gap-2 h-11 rounded-[var(--radius-btn)] bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold transition-all active:scale-[0.98] shadow-sm"
+                className="touch-btn w-full flex items-center justify-center gap-2 h-11 rounded-[var(--radius-btn)] bg-cyan-500 border border-cyan-500 hover:bg-cyan-600 text-white text-sm font-semibold active:scale-[0.98]"
               >
                 <Plus className="w-4 h-4" /> Nuevo Cliente
               </button>
@@ -192,14 +190,14 @@ export const ModalCliente = ({ onSeleccionar, onCancelar }: ModalClienteProps) =
               <button
                 onClick={() => { setShowForm(false); setError(''); }}
                 disabled={submitting}
-                className="touch-btn flex-1 h-11 rounded-[var(--radius-btn)] bg-slate-900 border border-border-default text-text-secondary hover:text-text-primary hover:bg-slate-850 text-sm font-bold transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-1.5"
+                className="touch-btn flex-1 h-11 rounded-[var(--radius-btn)] bg-surface-base border border-border-default text-text-secondary hover:text-text-primary text-sm font-medium active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 <ArrowLeft className="w-4 h-4" /> Volver
               </button>
               <button
                 onClick={handleCrear}
                 disabled={submitting}
-                className="touch-btn flex-1 h-11 rounded-[var(--radius-btn)] bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-bold transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shadow-sm"
+                className="touch-btn flex-1 h-11 rounded-[var(--radius-btn)] bg-cyan-500 border border-cyan-500 hover:bg-cyan-600 text-white text-sm font-semibold active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
               >
                 {submitting && <span className="w-3.5 h-3.5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />}
                 {submitting ? 'Creando...' : 'Crear'}

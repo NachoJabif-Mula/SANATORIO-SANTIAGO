@@ -1,5 +1,6 @@
 using BaresFamilia.Core.Models.Entities.Catalogo;
 using BaresFamilia.Core.Models.Entities.CuentasCorrientes;
+using BaresFamilia.Core.Models.Entities.Fiscal;
 using BaresFamilia.Core.Models.Entities.Inventario;
 using BaresFamilia.Core.Models.Entities.Transaccional;
 using Microsoft.EntityFrameworkCore;
@@ -52,6 +53,12 @@ public class LocalContext : DbContext
     public DbSet<Impresora> Impresoras => Set<Impresora>();
     public DbSet<TipoTicket> TiposTicket => Set<TipoTicket>();
     public DbSet<ImpresoraTicketTipo> ImpresoraTicketTipos => Set<ImpresoraTicketTipo>();
+
+    // Facturación Electrónica (ARCA)
+    public DbSet<ConfiguracionFiscalSucursal> ConfiguracionesFiscales => Set<ConfiguracionFiscalSucursal>();
+    public DbSet<TicketAccesoWsaa> TicketsAccesoWsaa => Set<TicketAccesoWsaa>();
+    public DbSet<Comprobante> Comprobantes => Set<Comprobante>();
+    public DbSet<ComprobanteAlicuota> ComprobanteAlicuotas => Set<ComprobanteAlicuota>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

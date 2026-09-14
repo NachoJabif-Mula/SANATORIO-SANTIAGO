@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Building2, MapPin, CheckCircle2, XCircle, RefreshCw, Plus, Edit2, Trash2, X, FileText, ChevronDown, ChevronUp } from 'lucide-react';
+import { Building2, MapPin, CheckCircle2, XCircle, RefreshCw, Plus, Edit2, Trash2, X, FileText, ChevronDown, ChevronUp, Printer } from 'lucide-react';
 import api from '@/services/api';
 
 interface Sucursal {
@@ -13,6 +13,7 @@ interface Sucursal {
   puntoDeVenta?: number;
   numeroIIBB?: string;
   fechaInicioActividades?: string;
+  impresionSimulada?: boolean;
   isActive: boolean;
 }
 
@@ -48,6 +49,7 @@ export default function SucursalesPage() {
   const [puntoDeVenta, setPuntoDeVenta] = useState<number>(1);
   const [numeroIIBB, setNumeroIIBB] = useState('');
   const [fechaInicioActividades, setFechaInicioActividades] = useState('');
+  const [impresionSimulada, setImpresionSimulada] = useState(false);
   const [showFiscalSection, setShowFiscalSection] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -89,7 +91,8 @@ export default function SucursalesPage() {
       condicionIva: cuit.trim() ? Number(condicionIva) : null,
       puntoDeVenta: Number(puntoDeVenta) || 1,
       numeroIIBB: numeroIIBB.trim() || null,
-      fechaInicioActividades: fechaInicioActividades || null
+      fechaInicioActividades: fechaInicioActividades || null,
+      impresionSimulada
     };
 
     try {
@@ -131,6 +134,7 @@ export default function SucursalesPage() {
     setPuntoDeVenta(1);
     setNumeroIIBB('');
     setFechaInicioActividades('');
+    setImpresionSimulada(false);
     setShowFiscalSection(false);
     setShowModal(true);
   }
@@ -146,6 +150,7 @@ export default function SucursalesPage() {
     setPuntoDeVenta(sucursal.puntoDeVenta || 1);
     setNumeroIIBB(sucursal.numeroIIBB || '');
     setFechaInicioActividades(sucursal.fechaInicioActividades ? sucursal.fechaInicioActividades.split('T')[0] : '');
+    setImpresionSimulada(Boolean(sucursal.impresionSimulada));
     setShowFiscalSection(Boolean(sucursal.cuit));
     setShowModal(true);
   }
@@ -214,6 +219,11 @@ export default function SucursalesPage() {
                     </span>
                   ) : (
                     <span className="text-[10px] text-pearl-400 italic">Sin datos fiscales</span>
+                  )}
+                  {s.impresionSimulada && (
+                    <span className="flex items-center gap-1 text-[10px] font-medium bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200">
+                      <Printer size={10} /> Impresión simulada
+                    </span>
                   )}
                 </div>
               </div>
@@ -308,6 +318,27 @@ export default function SucursalesPage() {
                   placeholder="Ej: Av. Honduras 4200, CABA" 
                   className="w-full h-9 px-3 text-sm bg-ice-50 border border-pearl-200 rounded-lg outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 placeholder:text-pearl-400" 
                 />
+              </div>
+
+              <div className="flex items-center justify-between gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <div className="flex items-start gap-2.5">
+                  <Printer size={16} className="text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-xs font-bold text-amber-900">Simular impresión (sin impresora física)</p>
+                    <p className="text-[11px] text-amber-700 mt-0.5">
+                      Las comandas y comprobantes fiscales (AFIP simulado) no se envían a ninguna impresora: se muestran en pantalla en el POS.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={impresionSimulada}
+                  onClick={() => setImpresionSimulada(v => !v)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${impresionSimulada ? 'bg-amber-500' : 'bg-pearl-300'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${impresionSimulada ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
               </div>
 
               {/* Colapsable Datos Fiscales */}

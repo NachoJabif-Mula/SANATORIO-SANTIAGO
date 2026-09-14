@@ -1,48 +1,35 @@
-using BaresFamilia.Core.Models.Entities.CuentasCorrientes;
-using BaresFamilia.Core.Models.Entities.Transaccional;
-using BaresFamilia.Core.Models.Enums;
+using BaresFamilia.Core.Models.Contratos.CuentasCorrientes;
 using BaresFamilia.Core.Models.Interfaces;
-using BaresFamilia.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace BaresFamilia.Local.Api.Controllers;
 
+/// <summary>
+/// Controlador local de cuentas corrientes de clientes.
+/// Flujo: CuentaCorrienteController → ICuentaCorrienteService → CuentaCorrienteService → I*Repository → *Repository.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class CuentaCorrienteController : ControllerBase
 {
-    private readonly LocalContext _context;
-    private readonly IService<MovimientoCuentaCorriente> _movimientoService;
-    private readonly IService<CuentaCorriente> _cuentaCorrienteService;
-    private readonly IService<MovimientoCaja> _movimientoCajaService;
-    private readonly ILogger<CuentaCorrienteController> _logger;
+    private readonly ICuentaCorrienteService _cuentaCorrienteService;
 
-    public CuentaCorrienteController(
-        LocalContext context,
-        IService<MovimientoCuentaCorriente> movimientoService,
-        IService<CuentaCorriente> cuentaCorrienteService,
-        IService<MovimientoCaja> movimientoCajaService,
-        ILogger<CuentaCorrienteController> logger)
+    public CuentaCorrienteController(ICuentaCorrienteService cuentaCorrienteService)
     {
-        _context = context;
-        _movimientoService = movimientoService;
         _cuentaCorrienteService = cuentaCorrienteService;
-        _movimientoCajaService = movimientoCajaService;
-        _logger = logger;
     }
 
     /// <summary>Obtiene el historial de movimientos de un cliente para seguimiento de cuenta corriente.</summary>
     [HttpGet("{clienteId:guid}/movimientos")]
     public async Task<IActionResult> GetMovimientos(Guid clienteId, CancellationToken ct)
     {
-        var cuenta = await _context.CuentasCorrientes.FirstOrDefaultAsync(c => c.ClienteId == clienteId, ct);
-        if (cuenta is null) return NotFound(new { message = "El cliente no tiene cuenta corriente." });
+        var resumen = await _cuentaCorrienteService.GetResumenPorClienteAsync(clienteId, ct);
 
-        var movimientos = await _context.Set<MovimientoCuentaCorriente>()
-            .Where(m => m.CuentaCorrienteId == cuenta.Id && m.IsActive)
-            .OrderByDescending(m => m.CreatedAt)
-            .Select(m => new {
+        return Ok(new
+        {
+            saldoActual = resumen.SaldoActual,
+            movimientos = resumen.Movimientos.Select(m => new
+            {
                 id = m.Id,
                 tipo = m.Tipo.ToString(),
                 monto = m.Monto,
@@ -50,72 +37,21 @@ public class CuentaCorrienteController : ControllerBase
                 comandaId = m.ComandaId,
                 fecha = m.CreatedAt
             })
-            .ToListAsync(ct);
-
-        return Ok(new { saldoActual = cuenta.SaldoActual, movimientos });
+        });
     }
 
     /// <summary>Liquida (total o parcialmente) el saldo de cuenta corriente de un cliente.</summary>
     [HttpPost("{clienteId:guid}/abonar")]
     public async Task<IActionResult> Abonar(Guid clienteId, [FromBody] AbonarCuentaCorrienteRequest request, CancellationToken ct)
     {
-        if (request.Monto <= 0)
-            return BadRequest(new { message = "El monto a abonar debe ser mayor a cero." });
+        var resultado = await _cuentaCorrienteService.AbonarAsync(
+            clienteId, request.TurnoCajaId, request.MetodoPagoId, request.Monto, ct);
 
-        var cuenta = await _context.CuentasCorrientes
-            .Include(c => c.Cliente)
-            .FirstOrDefaultAsync(c => c.ClienteId == clienteId, ct);
-        if (cuenta is null) return NotFound(new { message = "El cliente no tiene cuenta corriente." });
-
-        if (request.Monto > cuenta.SaldoActual)
-            return BadRequest(new { message = $"El monto a abonar ({request.Monto:N2}) supera el saldo adeudado ({cuenta.SaldoActual:N2})." });
-
-        var metodoPago = await _context.MetodosPago.FirstOrDefaultAsync(m => m.Id == request.MetodoPagoId && m.IsActive, ct);
-        if (metodoPago is null) return BadRequest(new { message = "Método de pago no encontrado." });
-        if (metodoPago.EsCuentaCorriente)
-            return BadRequest(new { message = "No se puede liquidar una cuenta corriente usando 'Cuenta Corriente' como método de pago." });
-
-        var turnoCaja = await _context.TurnosCaja.FirstOrDefaultAsync(t => t.Id == request.TurnoCajaId && t.FechaCierre == null, ct);
-        if (turnoCaja is null) return BadRequest(new { message = "No hay un turno de caja activo válido." });
-
-        // 1. Crear movimiento de cuenta corriente (Pago)
-        var movimiento = new MovimientoCuentaCorriente
+        return Ok(new
         {
-            CuentaCorrienteId = cuenta.Id,
-            ComandaId = null,
-            Tipo = TipoMovimientoCuentaCorriente.Pago,
-            Monto = request.Monto,
-            Detalle = $"Abono a cuenta corriente vía {metodoPago.Nombre} — {cuenta.Cliente.Nombre} {cuenta.Cliente.Apellido}",
-            SyncEstado = SyncEstado.Pendiente
-        };
-        await _movimientoService.CreateAsync(movimiento, ct);
-
-        // 2. Actualizar saldo
-        cuenta.SaldoActual -= request.Monto;
-        cuenta.UpdatedAt = DateTime.UtcNow;
-        await _cuentaCorrienteService.UpdateAsync(cuenta, ct);
-
-        // 3. Reflejar en arqueo de caja SI el cobro fue en Efectivo
-        if (metodoPago.Nombre.Equals("Efectivo", StringComparison.OrdinalIgnoreCase))
-        {
-            await _movimientoCajaService.CreateAsync(new MovimientoCaja
-            {
-                TurnoCajaId = request.TurnoCajaId,
-                Tipo = TipoMovimientoCaja.Ingreso,
-                Monto = request.Monto,
-                Concepto = $"Cobro Cta. Cte. — {cuenta.Cliente.Nombre} {cuenta.Cliente.Apellido}",
-                SyncEstado = SyncEstado.Pendiente
-            }, ct);
-        }
-
-        _logger.LogInformation("Abono de Cta. Cte. registrado. Cliente {ClienteId}. Monto {Monto}. Nuevo saldo {Saldo}", clienteId, request.Monto, cuenta.SaldoActual);
-
-        return Ok(new {
-            saldoAnterior = cuenta.SaldoActual + request.Monto,
-            saldoActual = cuenta.SaldoActual,
-            montoAbonado = request.Monto
+            saldoAnterior = resultado.SaldoAnterior,
+            saldoActual = resultado.SaldoActual,
+            montoAbonado = resultado.MontoAbonado
         });
     }
 }
-
-public record AbonarCuentaCorrienteRequest(Guid TurnoCajaId, Guid MetodoPagoId, decimal Monto);

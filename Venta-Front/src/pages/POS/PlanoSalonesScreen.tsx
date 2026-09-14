@@ -1,23 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   LogOut,
   User,
-  Layers,
   DoorOpen,
   Leaf,
   Wine,
   Music,
-  Maximize2,
+  ChevronDown,
+  ChevronUp,
   KeyRound,
   Sun,
   Moon,
-  Wallet
+  Wallet,
+  ClipboardList,
+  Zap,
+  Bike
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AppContext';
 import { useCaja } from '@/contexts/CajaContext';
 import ModalAperturaTurno from '@/common/components/POS/ModalAperturaTurno';
 import { ModalCliente } from '@/common/components/POS/ModalCliente';
+import { ModalAutorizacion } from '@/common/components/POS/ModalAutorizacion';
 import type { Cliente } from '@/common/types';
 import api from '@/services/api';
 
@@ -126,9 +130,23 @@ export default function PlanoSalonesScreen() {
   const [dbMesas, setDbMesas] = useState<any[]>([]);
   const [openComandas, setOpenComandas] = useState<any[]>([]);
   const [showModalClienteCC, setShowModalClienteCC] = useState(false);
+  const [mapMenuOpen, setMapMenuOpen] = useState(false);
+  const [mesaBloqueada, setMesaBloqueada] = useState<{ comanda: any; mesaId: string; label: string } | null>(null);
+  const mapMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Cuentas corrientes abiertas: comandas exentas de turno a nombre de un cliente
   const cuentasAbiertas = openComandas.filter((c: any) => !!c.clienteId);
+
+  // Cerrar el selector de salón al hacer click afuera
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (mapMenuRef.current && !mapMenuRef.current.contains(event.target as Node)) {
+        setMapMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // --- Verificar Activación y Cargar Planos ---
   useEffect(() => {
@@ -211,6 +229,10 @@ export default function PlanoSalonesScreen() {
     navigate('/login', { replace: true });
   };
 
+  const irAComanda = (activeComanda: any, targetMesaId: string, label: string) => {
+    navigate(`/pos?comandaId=${activeComanda.id}&mesaId=${targetMesaId}&mesaName=${encodeURIComponent(label)}`);
+  };
+
   const handleTableClick = (table: TableItem) => {
     // 1. Intentar encontrar la mesa correspondiente en la base de datos por etiqueta
     const dbMesa = dbMesas.find(
@@ -227,8 +249,15 @@ export default function PlanoSalonesScreen() {
       : null;
 
     if (activeComanda) {
-      // Redirigir a editar el pedido activo
-      navigate(`/pos?comandaId=${activeComanda.id}&mesaId=${targetMesaId}&mesaName=${encodeURIComponent(table.label)}`);
+      // La mesa está tomada por el mozo que la abrió: sólo ese mozo o un
+      // gerente/administrador (autorización por PIN) pueden entrar a editarla.
+      const esDueño = !!usuario && activeComanda.usuarioId === usuario.id;
+      const esAutorizado = tienePermiso('gerente.override');
+      if (esDueño || esAutorizado) {
+        irAComanda(activeComanda, targetMesaId, table.label);
+      } else {
+        setMesaBloqueada({ comanda: activeComanda, mesaId: targetMesaId, label: table.label });
+      }
     } else {
       // Redirigir a crear nueva comanda
       navigate(`/pos?mesaId=${targetMesaId}&mesaName=${encodeURIComponent(table.label)}`);
@@ -274,7 +303,7 @@ export default function PlanoSalonesScreen() {
         chairs.push(
           <div
             key={`chair-${i}`}
-            className={`absolute ${chairSize} bg-slate-900 border border-border-default rounded-full -translate-x-1/2 -translate-y-1/2 shadow-xs`}
+            className={`absolute ${chairSize} bg-surface-base border border-border-default rounded-full -translate-x-1/2 -translate-y-1/2`}
             style={{ left: `${left}%`, top: `${top}%` }}
           />
         );
@@ -292,7 +321,7 @@ export default function PlanoSalonesScreen() {
         chairs.push(
           <div
             key={`chair-top-${id}`}
-            className={`absolute ${chairSize} bg-slate-900 border border-border-default rounded-[2px] -translate-x-1/2 -translate-y-1/2 shadow-xs`}
+            className={`absolute ${chairSize} bg-surface-base border border-border-default rounded-[2px] -translate-x-1/2 -translate-y-1/2`}
             style={{ left: `${left}%`, top: '-2px' }}
           />
         );
@@ -305,7 +334,7 @@ export default function PlanoSalonesScreen() {
         chairs.push(
           <div
             key={`chair-right-${id}`}
-            className={`absolute ${chairSize} bg-slate-900 border border-border-default rounded-[2px] -translate-x-1/2 -translate-y-1/2 shadow-xs`}
+            className={`absolute ${chairSize} bg-surface-base border border-border-default rounded-[2px] -translate-x-1/2 -translate-y-1/2`}
             style={{ left: 'calc(100% + 2px)', top: `${top}%` }}
           />
         );
@@ -318,7 +347,7 @@ export default function PlanoSalonesScreen() {
         chairs.push(
           <div
             key={`chair-bottom-${id}`}
-            className={`absolute ${chairSize} bg-slate-900 border border-border-default rounded-[2px] -translate-x-1/2 -translate-y-1/2 shadow-xs`}
+            className={`absolute ${chairSize} bg-surface-base border border-border-default rounded-[2px] -translate-x-1/2 -translate-y-1/2`}
             style={{ left: `${left}%`, top: 'calc(100% + 2px)' }}
           />
         );
@@ -331,7 +360,7 @@ export default function PlanoSalonesScreen() {
         chairs.push(
           <div
             key={`chair-left-${id}`}
-            className={`absolute ${chairSize} bg-slate-900 border border-border-default rounded-[2px] -translate-x-1/2 -translate-y-1/2 shadow-xs`}
+            className={`absolute ${chairSize} bg-surface-base border border-border-default rounded-[2px] -translate-x-1/2 -translate-y-1/2`}
             style={{ left: '-2px', top: `${top}%` }}
           />
         );
@@ -443,112 +472,172 @@ export default function PlanoSalonesScreen() {
     }
   }
 
+  const totalOcupadas = activeMap ? activeMap.tables.filter(t => !t.isDecoration && (dbMesas.find((m: any) => m.etiqueta.toLowerCase() === t.label.toLowerCase())?.ocupada ?? openMesaIds.has(t.id))).length : 0;
+  const totalMesas = activeMap ? activeMap.tables.filter(t => !t.isDecoration).length : 0;
+
   return (
     <div className="h-screen w-screen flex flex-col bg-slate-950 overflow-hidden text-text-primary">
       {/* Top Bar */}
-      <header className="flex items-center justify-between px-6 py-3 bg-surface-base border-b border-border-default flex-shrink-0 shadow-sm">
-        <div className="flex items-center gap-2.5">
-          <h1 className="text-sm font-bold tracking-tight text-text-primary">
-            Bares <span className="text-text-secondary font-semibold">Familia</span>
-          </h1>
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-text-muted bg-slate-850 px-2 py-0.5 rounded-[3px] border border-border-default/50">
-            Salón de Mesas
-          </span>
-          {turnoActivo && (
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-text-secondary bg-slate-850 px-2.5 py-1 rounded-[3px] border border-border-default/60 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-success-500" />
-              {new Date(turnoActivo.fechaContable).toLocaleDateString('es-AR')} · Turno {turnoActivo.turno}
-            </span>
-          )}
+      <header className="flex items-center flex-wrap gap-y-2 gap-x-3 px-3.5 py-2 min-h-[56px] bg-surface-base border-b border-border-default flex-shrink-0">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-4 h-4 border-2 border-amber-500 rounded-[5px] flex-shrink-0" />
+          <span className="text-sm font-semibold tracking-tight text-text-primary truncate">Bares Familia</span>
         </div>
 
-        {/* Salons list tabs */}
-        <div className="flex items-center bg-slate-900/60 border border-border-default/80 rounded-[var(--radius-btn)] p-0.5 max-w-[50%] overflow-x-auto no-scrollbar gap-1">
-          {maps.map(map => (
-            <button
-              key={map.id}
-              onClick={() => setActiveMapId(map.id)}
-              className={`flex items-center gap-1 px-3.5 py-1.5 rounded-[var(--radius-btn)] text-xs font-semibold transition-all whitespace-nowrap min-h-[32px] cursor-pointer
-                ${activeMapId === map.id
-                  ? 'bg-slate-800 text-text-primary border border-border-strong'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-slate-900/40 border border-transparent'}
-              `}
-            >
-              <Layers size={11} className={activeMapId === map.id ? 'text-amber-500' : 'text-text-muted'} />
-              {map.name}
-            </button>
-          ))}
-        </div>
+        {turnoActivo && (
+          <span className="text-[10.5px] font-semibold uppercase tracking-wide text-text-secondary bg-surface-overlay px-2.5 py-1 rounded-[8px] border border-border-default flex items-center gap-1.5 font-mono">
+            <span className="w-1.5 h-1.5 rounded-full bg-success-500" />
+            {new Date(turnoActivo.fechaContable).toLocaleDateString('es-AR')} · Turno {turnoActivo.turno}
+          </span>
+        )}
 
         <div className="flex items-center gap-2">
-          {/* Botón de cambio de Tema Claro/Oscuro */}
-          <button 
-            onClick={toggleTheme}
-            className="touch-btn flex items-center justify-center w-[38px] h-[38px] rounded-[var(--radius-btn)] bg-slate-900/80 text-text-secondary hover:text-text-primary hover:bg-slate-800 border border-border-default/60 transition-all duration-150 shadow-sm"
-            title={theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-500" /> : <Moon className="w-4 h-4 text-cyan-500" />}
-          </button>
-
           <button
-            onClick={() => setShowModalClienteCC(true)}
-            className="touch-btn flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-btn)] bg-slate-900/80 text-cyan-500 hover:text-cyan-400 hover:bg-cyan-500/5 border border-cyan-500/20 transition-all duration-200 text-xs font-bold min-h-[38px] shadow-sm"
+            onClick={() => navigate('/historial-ventas')}
+            className="touch-btn h-12 px-3 flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-surface-base text-text-primary hover:border-amber-500 hover:text-amber-500 border border-border-default text-[12.5px] font-medium min-h-0"
           >
-            <Wallet className="w-4 h-4" />
-            Cuenta Corriente
-            {cuentasAbiertas.length > 0 && (
-              <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-cyan-500 text-slate-950">{cuentasAbiertas.length}</span>
-            )}
+            <ClipboardList className="w-4 h-4" />
+            Listado de pedidos
           </button>
-
           {esEncargado && (
             <button
               onClick={() => navigate('/pos-admin')}
-              className="touch-btn flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-btn)] bg-slate-900/80 text-amber-500 hover:text-amber-400 hover:bg-amber-500/5 border border-amber-500/20 transition-all duration-200 text-xs font-bold min-h-[38px] shadow-sm"
+              className="touch-btn h-12 px-3 flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-surface-base text-text-primary hover:border-amber-500 hover:text-amber-500 border border-border-default text-[12.5px] font-medium min-h-0"
             >
               <KeyRound className="w-4 h-4" />
-              Panel Admin
+              Funciones admin
             </button>
           )}
+        </div>
+
+        <div className="flex-1" />
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleTheme}
+            className="touch-btn w-12 h-12 flex items-center justify-center rounded-[var(--radius-btn)] bg-surface-base border border-border-default text-text-muted hover:border-amber-500 hover:text-amber-500 min-h-0"
+            title={theme === 'dark' ? 'Modo Claro' : 'Modo Oscuro'}
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+
           {usuario && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-btn)] bg-slate-900/40 border border-border-default/50 shadow-sm">
-              <User className="w-4 h-4 text-text-muted" />
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-btn)] bg-surface-overlay border border-border-default">
+              <User className="w-3.5 h-3.5 text-text-muted" />
               <span className="text-xs font-semibold text-text-secondary">{usuario.nombre}</span>
-              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-info-500/5 text-info-400 border border-info-500/10">
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider text-info-500 border border-info-500/30 font-mono">
                 {usuario.rol}
               </span>
             </div>
           )}
+
           <button onClick={handleLogout}
-            className="touch-btn flex items-center gap-1.5 px-4 py-2 rounded-[var(--radius-btn)] bg-slate-900/80 text-text-muted hover:text-danger-400 hover:bg-danger-500/5 border border-border-default transition-all duration-200 text-xs font-bold min-h-[38px] shadow-sm">
+            className="touch-btn flex items-center gap-1.5 h-12 px-3 rounded-[var(--radius-btn)] bg-surface-base text-text-muted hover:border-danger-500 hover:text-danger-500 border border-border-default text-[12.5px] font-medium min-h-0">
             <LogOut className="w-4 h-4" />
             Salir
           </button>
         </div>
       </header>
 
+      {/* Sub-bar: contexto del mapa activo y accesos de venta rápida */}
+      <div className="flex items-center flex-wrap gap-y-2 gap-x-3 px-4 py-2.5 border-b border-border-default bg-surface-base flex-shrink-0">
+        <span className="font-mono text-[10.5px] text-text-muted truncate">
+          {activeMap ? `${activeMap.targetWidth || 1024} × ${activeMap.targetHeight || 768} · ${totalOcupadas} de ${totalMesas} mesas ocupadas` : ''}
+        </span>
+        <div className="flex-1" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowModalClienteCC(true)}
+            className="touch-btn h-[52px] px-3.5 flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-surface-base text-text-primary hover:border-cyan-500 hover:text-cyan-500 border border-border-default text-[12.5px] font-medium min-h-0"
+          >
+            <Wallet className="w-4 h-4" />
+            Cuenta corriente
+            {cuentasAbiertas.length > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black bg-cyan-500 text-white font-mono">{cuentasAbiertas.length}</span>
+            )}
+          </button>
+          <button
+            onClick={() => navigate('/pos?origen=rapida')}
+            className="touch-btn h-[52px] px-3.5 flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-surface-base text-text-primary hover:border-amber-500 hover:text-amber-500 border border-border-default text-[12.5px] font-medium min-h-0"
+          >
+            <Zap className="w-4 h-4" />
+            Orden rápida
+          </button>
+          <button
+            onClick={() => navigate('/pos?origen=delivery')}
+            className="touch-btn h-[52px] px-4 flex items-center gap-1.5 rounded-[var(--radius-btn)] bg-amber-500 border border-amber-500 text-white text-[12.5px] font-semibold min-h-0 hover:bg-amber-600"
+          >
+            <Bike className="w-4 h-4" />
+            Orden de delivery
+          </button>
+        </div>
+      </div>
+
       {/* Main Workspace */}
-      <main className="flex-1 overflow-auto p-6 flex flex-col items-center justify-center bg-slate-900/25 relative">
-        <div className="mb-4 text-center">
-          <h2 className="text-sm font-bold text-text-secondary uppercase tracking-widest flex items-center justify-center gap-1.5">
-            <Maximize2 size={13} className="text-amber-500" />
-            Seleccione una Mesa
-          </h2>
-          <p className="text-xs text-text-muted mt-0.5">Haga click en una mesa para gestionar la comanda activa o iniciar un pedido.</p>
+      <main className="flex-1 min-h-0 overflow-hidden relative flex items-center justify-center p-4 bg-slate-950 pos-grid-bg">
+
+        {/* Selector de salón flotante */}
+        <div ref={mapMenuRef} className="absolute left-4 top-4 z-20 flex flex-col items-start gap-2 max-h-[calc(100%-32px)]">
+          <button
+            onClick={() => setMapMenuOpen(o => !o)}
+            className="touch-btn flex items-center gap-2.5 h-[52px] px-3 bg-surface-base border border-border-default rounded-[var(--radius-btn)] text-text-primary text-[12.5px] font-semibold min-h-0 hover:border-amber-500"
+          >
+            <span className="font-mono text-[9.5px] tracking-[0.14em] uppercase text-text-muted">Mapa</span>
+            <span>{activeMap?.name}</span>
+            {mapMenuOpen ? <ChevronUp className="w-3.5 h-3.5 text-text-muted" /> : <ChevronDown className="w-3.5 h-3.5 text-text-muted" />}
+          </button>
+
+          {mapMenuOpen && (
+            <div className="w-[236px] bg-surface-base border border-border-default rounded-[12px] shadow-modal overflow-hidden flex flex-col animate-fade-in">
+              <div className="p-2 flex flex-col gap-0.5 overflow-y-auto max-h-[260px]">
+                {maps.map(map => {
+                  const ocupadas = map.tables.filter(t => !t.isDecoration && (dbMesas.find((m: any) => m.etiqueta.toLowerCase() === t.label.toLowerCase())?.ocupada ?? openMesaIds.has(t.id))).length;
+                  const total = map.tables.filter(t => !t.isDecoration).length;
+                  return (
+                    <button
+                      key={map.id}
+                      onClick={() => { setActiveMapId(map.id); setMapMenuOpen(false); }}
+                      className={`flex items-center justify-between gap-2 p-2.5 rounded-[10px] text-left border ${
+                        map.id === activeMapId ? 'bg-surface-overlay border-amber-500' : 'border-transparent hover:border-border-default'
+                      }`}
+                    >
+                      <span className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-[13px] font-semibold text-text-primary truncate">{map.name}</span>
+                        <span className="text-[10.5px] text-text-muted font-mono">{total} mesas · {map.targetWidth || 1024}×{map.targetHeight || 768}</span>
+                      </span>
+                      <span className="font-mono text-[10.5px] px-1.5 py-0.5 rounded-full bg-surface-overlay border border-border-default text-text-muted whitespace-nowrap">
+                        {ocupadas}/{total}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="border-t border-border-default px-3.5 py-2.5 flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-[3px] inline-block bg-surface-base border border-border-default" />
+                  <span className="text-[11px] text-text-muted">Libre</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-[3px] inline-block bg-danger-500 border border-danger-600" />
+                  <span className="text-[11px] text-text-muted">Ocupada</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Cuentas Corrientes abiertas */}
         {cuentasAbiertas.length > 0 && (
-          <div className="w-full max-w-3xl mb-4 flex flex-wrap items-center justify-center gap-2">
+          <div className="absolute right-4 top-4 z-20 w-[260px] flex flex-col gap-1.5">
             {cuentasAbiertas.map((c: any) => (
               <button
                 key={c.id}
                 onClick={() => navigate(`/pos?comandaId=${c.id}&clienteId=${c.clienteId}&clienteNombre=${encodeURIComponent(c.cliente ? `${c.cliente.nombre} ${c.cliente.apellido}` : 'Cliente')}`)}
-                className="touch-btn flex items-center gap-1.5 px-3 py-1.5 rounded-[var(--radius-btn)] bg-cyan-500/5 border border-cyan-500/25 text-cyan-400 hover:bg-cyan-500/10 hover:border-cyan-500/40 transition-all text-xs font-bold"
+                className="touch-btn flex items-center gap-1.5 px-3 py-2 rounded-[var(--radius-btn)] bg-surface-base border border-cyan-500/40 text-cyan-500 hover:border-cyan-500 text-xs font-bold min-h-0"
               >
-                <Wallet className="w-3.5 h-3.5" />
-                {c.cliente ? `${c.cliente.nombre} ${c.cliente.apellido}` : 'Cuenta abierta'}
-                <span className="text-cyan-500/70 font-semibold">{formatARS(c.total)}</span>
+                <Wallet className="w-3.5 h-3.5 flex-shrink-0" />
+                <span className="truncate flex-1 text-left">{c.cliente ? `${c.cliente.nombre} ${c.cliente.apellido}` : 'Cuenta abierta'}</span>
+                <span className="text-cyan-500/80 font-semibold font-mono flex-shrink-0">{formatARS(c.total)}</span>
               </button>
             ))}
           </div>
@@ -556,12 +645,14 @@ export default function PlanoSalonesScreen() {
 
         {/* Canvas del Salón */}
         {activeMap && (
-          <div 
-            className="w-full bg-slate-900/50 border border-border-default/60 rounded-xl shadow-card relative overflow-hidden transition-all duration-300"
+          <div
+            className="bg-surface-base border border-border-default rounded-[14px] relative overflow-hidden"
             style={{
               ...getCanvasStyles(),
               aspectRatio: `${activeMap.targetWidth || 1024} / ${activeMap.targetHeight || 768}`,
-              maxWidth: `min(85vw, calc(72vh * (${activeMap.targetWidth || 1024} / ${activeMap.targetHeight || 768})))`
+              width: '100%',
+              maxWidth: `min(100%, calc(100% * ${(activeMap.targetWidth || 1024) / (activeMap.targetHeight || 768)}))`,
+              maxHeight: '100%'
             }}
           >
             {/* Rejilla decorativa */}
@@ -615,10 +706,8 @@ export default function PlanoSalonesScreen() {
                 <div
                   key={table.id}
                   onClick={() => handleTableClick(table)}
-                  className={`absolute flex items-center justify-center select-none shadow-sm hover:scale-[1.03] transition-all duration-150 cursor-pointer active:scale-95 group border ${
-                    isOccupied 
-                      ? 'border-rose-600 bg-rose-950/70 text-rose-300' 
-                      : 'hover:border-amber-500 text-text-primary'
+                  className={`absolute flex items-center justify-center select-none cursor-pointer active:scale-95 transition-transform duration-100 border ${
+                    isOccupied ? 'text-white' : 'hover:border-amber-500 text-text-primary'
                   }`}
                   style={{
                     left: `${table.x}%`,
@@ -626,20 +715,20 @@ export default function PlanoSalonesScreen() {
                     width: `${table.width}%`,
                     height: `${table.height}%`,
                     transform: `rotate(${table.rotation || 0}deg)`,
-                    backgroundColor: isOccupied ? '#7f1d1d' : (table.color || '#3b82f6'),
+                    backgroundColor: isOccupied ? 'var(--danger-500)' : (table.color || '#3b82f6'),
                     color: isOccupied ? '#ffffff' : getContrastColor(table.color || '#3b82f6'),
-                    borderColor: isOccupied ? '#ef4444' : 'rgba(0,0,0,0.15)',
-                    borderRadius: table.type === 'circle' ? '50%' : '6px',
+                    borderColor: isOccupied ? 'var(--danger-600)' : 'var(--border-default)',
+                    borderRadius: table.type === 'circle' ? '50%' : '10px',
                     overflow: 'visible',
                   }}
                   title={`Mesa: ${table.label} (${table.seats} sillas) ${isOccupied ? '- OCUPADA' : '- LIBRE'}`}
                 >
                   <div className="flex flex-col items-center justify-center text-center">
-                    <span className="text-[10px] md:text-[11px] font-bold tracking-tight truncate max-w-full px-1">
+                    <span className="text-[10px] md:text-[11px] font-bold tracking-tight truncate max-w-full px-1 font-mono">
                       {table.label}
                     </span>
                     {isOccupied && (
-                      <span className="text-[7px] md:text-[8px] font-semibold text-rose-300 uppercase tracking-widest mt-0.5 scale-90">
+                      <span className="text-[7px] md:text-[8px] font-semibold uppercase tracking-widest mt-0.5 scale-90 font-mono">
                         Ocupada
                       </span>
                     )}
@@ -647,26 +736,29 @@ export default function PlanoSalonesScreen() {
 
                   {/* Renderizar sillas perimetrales */}
                   {renderChairs(table.seats, table.type as 'square' | 'circle' | 'rectangle')}
-
-                  {/* Brillo al pasar el cursor */}
-                  <div className="absolute inset-0 rounded-inherit opacity-0 group-hover:opacity-[0.03] bg-white transition-opacity duration-150" />
                 </div>
               );
             })}
           </div>
         )}
       </main>
-      
-      {/* Footer Info bar */}
-      <footer className="px-5 py-2.5 bg-surface-base border-t border-border-default text-center text-[10px] text-text-muted flex-shrink-0 flex items-center justify-between">
-        <span>Bares Familia © 2026</span>
-        <span>Terminal Local — Módulo de Ventas</span>
-      </footer>
 
       {showModalClienteCC && (
         <ModalCliente
           onSeleccionar={handleClienteSeleccionado}
           onCancelar={() => setShowModalClienteCC(false)}
+        />
+      )}
+
+      {mesaBloqueada && (
+        <ModalAutorizacion
+          mensaje={`Esta mesa está tomada por ${mesaBloqueada.comanda.usuario?.nombre || 'otro mozo'}. Ingrese el PIN de gerente para autorizar el acceso.`}
+          onConfirmar={() => {
+            const { comanda, mesaId, label } = mesaBloqueada;
+            setMesaBloqueada(null);
+            irAComanda(comanda, mesaId, label);
+          }}
+          onCancelar={() => setMesaBloqueada(null)}
         />
       )}
     </div>

@@ -5,6 +5,12 @@ namespace BaresFamilia.Core.Models.Entities.Catalogo;
 /// </summary>
 public class Categoria : BaseEntity
 {
+    /// <summary>
+    /// Sucursal dueña de esta categoría: el catálogo (categorías y productos) es
+    /// propio de cada sucursal, no compartido globalmente.
+    /// </summary>
+    public Guid SucursalId { get; set; }
+
     public string Nombre { get; set; } = string.Empty;
 
     /// <summary>
@@ -13,5 +19,6 @@ public class Categoria : BaseEntity
     public int OrdenVisual { get; set; }
 
     // Navegación
+    public Sucursal Sucursal { get; set; } = null!;
     public ICollection<Producto> Productos { get; set; } = [];
 }

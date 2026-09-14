@@ -37,4 +37,26 @@ public interface IComandaRepository : IRepository<Comanda>
     /// Actualiza una comanda existente reemplazando físicamente todos sus ítems asociados.
     /// </summary>
     Task UpdateComandaWithItemsAsync(Comanda existing, List<ComandaItem> newItems, CancellationToken ct);
+
+    /// <summary>
+    /// Cuenta las comandas abiertas de un turno concreto. Las cuentas corrientes
+    /// abiertas (sin fecha contable, exentas de turno) quedan excluidas.
+    /// </summary>
+    Task<int> ContarAbiertasDeTurnoAsync(DateTime fechaContable, string turno, CancellationToken ct = default);
+
+    /// <summary>
+    /// Obtiene las comandas abiertas de un turno concreto.
+    /// </summary>
+    Task<IEnumerable<Comanda>> GetAbiertasDeTurnoAsync(DateTime fechaContable, string turno, CancellationToken ct = default);
+
+    /// <summary>
+    /// Cuenta las comandas abiertas de una fecha contable, sin distinguir turno.
+    /// </summary>
+    Task<int> ContarAbiertasDeFechaAsync(DateTime fechaContable, CancellationToken ct = default);
+
+    /// <summary>
+    /// Persiste los cambios de un conjunto de comandas ya modificadas en memoria.
+    /// Lo usa la transferencia de mesas abiertas al turno siguiente.
+    /// </summary>
+    Task GuardarCambiosAsync(IEnumerable<Comanda> comandas, CancellationToken ct = default);
 }

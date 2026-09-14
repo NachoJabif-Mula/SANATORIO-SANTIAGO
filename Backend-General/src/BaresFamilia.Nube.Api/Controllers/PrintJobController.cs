@@ -1,30 +1,15 @@
+using BaresFamilia.Core.Models.Dtos.Impresion;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BaresFamilia.Nube.Api.Controllers;
 
 /// <summary>
-/// DTO provisorio para trabajos de impresión en cola (para ser reemplazado por entidad EF en Fase 5).
-/// </summary>
-public record PrintJobDto(
-    Guid Id,
-    Guid SucursalId,
-    Guid ImpresoraId,
-    string ImpresoraNombre,
-    string Estado,
-    string TipoDocumento,
-    string PayloadJson,
-    string? ResultadoJson,
-    int Intentos,
-    DateTime CreatedAt
-);
-
-/// <summary>
 /// Controlador para monitoreo y gestión de la cola de trabajos de impresión.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
+[Authorize(Policy = "Backoffice")]
 public class PrintJobController : ControllerBase
 {
     private static readonly List<PrintJobDto> _memoriaJobs = new();

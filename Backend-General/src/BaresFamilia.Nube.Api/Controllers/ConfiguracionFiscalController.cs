@@ -1,87 +1,155 @@
+using BaresFamilia.Core.Models.Contratos.Fiscal;
+using BaresFamilia.Core.Models.Enums;
+using BaresFamilia.Core.Models.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BaresFamilia.Nube.Api.Controllers;
 
 /// <summary>
-/// Controlador para la gestión de certificados AFIP/ARCA, ambiente de emisión y estado fiscal.
+/// Configuración fiscal de cada sucursal ante ARCA (ex-AFIP): certificado digital,
+/// contraseña y ambiente de emisión.
+///
+/// Cada sucursal es una razón social distinta con su propio CUIT y su propio certificado,
+/// por eso todas las operaciones son por sucursal y nunca globales.
 /// </summary>
 [ApiController]
-[Route("api/[controller]")]
-[Authorize]
+[Route("api/configuracion-fiscal")]
+[Authorize(Policy = "Backoffice")]
 public class ConfiguracionFiscalController : ControllerBase
 {
-    private static string _ambienteActual = "Homologacion";
-    private static bool _certificadoCargado = false;
-    private static string? _certificadoNombre = null;
+    private readonly IConfiguracionFiscalService _configuracionFiscalService;
 
-    /// <summary>
-    /// Obtiene el estado actual de la configuración fiscal.
-    /// </summary>
-    [HttpGet("estado")]
-    public IActionResult GetEstado()
+    public ConfiguracionFiscalController(IConfiguracionFiscalService configuracionFiscalService)
     {
-        return Ok(new
-        {
-            ambiente = _ambienteActual,
-            certificado = new
-            {
-                ok = _certificadoCargado,
-                message = _certificadoCargado 
-                    ? $"Certificado '{_certificadoNombre}' cargado y válido."
-                    : "No se ha cargado ningún certificado digital .pfx."
-            }
-        });
+        _configuracionFiscalService = configuracionFiscalService;
     }
 
     /// <summary>
-    /// Valida y almacena un certificado digital .pfx con su contraseña.
+    /// Estado fiscal de todas las sucursales activas.
     /// </summary>
-    [HttpPost("validar-certificado")]
-    public IActionResult ValidarCertificado([FromForm] IFormFile? file, [FromForm] string? password)
+    [HttpGet]
+    [ProducesResponseType(typeof(IEnumerable<EstadoFiscalSucursal>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAll(CancellationToken ct) =>
+        Ok(await _configuracionFiscalService.ObtenerEstadosAsync(ct));
+
+    /// <summary>
+    /// Estado fiscal de una sucursal puntual.
+    /// </summary>
+    [HttpGet("{sucursalId:guid}")]
+    [ProducesResponseType(typeof(EstadoFiscalSucursal), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetPorSucursal(Guid sucursalId, CancellationToken ct)
     {
-        if (file != null && file.Length > 0)
+        var estado = await _configuracionFiscalService.ObtenerEstadoAsync(sucursalId, ct);
+        return estado is null
+            ? NotFound(new { message = "Sucursal no encontrada." })
+            : Ok(estado);
+    }
+
+    /// <summary>
+    /// Genera la solicitud de certificado (CSR) para subir al portal de ARCA y la devuelve
+    /// como archivo descargable.
+    /// </summary>
+    [HttpPost("{sucursalId:guid}/solicitud")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GenerarSolicitud(Guid sucursalId, CancellationToken ct)
+    {
+        try
         {
-            _certificadoNombre = file.FileName;
-            _certificadoCargado = true;
-            return Ok(new { ok = true, message = $"Certificado '{file.FileName}' recibido y verificado correctamente." });
+            var solicitud = await _configuracionFiscalService.GenerarSolicitudCertificadoAsync(sucursalId, ct);
+            return File(System.Text.Encoding.ASCII.GetBytes(solicitud.ContenidoPem), "application/pkcs10", solicitud.NombreArchivo);
         }
-
-        if (_certificadoCargado)
+        catch (KeyNotFoundException ex)
         {
-            return Ok(new { ok = true, message = "Certificado existente verificado correctamente." });
+            return NotFound(new { message = ex.Message });
         }
-
-        return BadRequest(new { message = "Se requiere un archivo .pfx válido." });
-    }
-
-    /// <summary>
-    /// Prueba la conectividad con los Web Services de AFIP (WSAA / WSFE).
-    /// </summary>
-    [HttpPost("test-afip")]
-    public IActionResult TestAfip([FromBody] TestAfipRequest request)
-    {
-        var amb = request?.Ambiente ?? _ambienteActual;
-        return Ok(new
+        catch (InvalidOperationException ex)
         {
-            ok = true,
-            message = $"Conexión verificada con AFIP WSAA/WSFE en ambiente '{amb}'."
-        });
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>
-    /// Cambia el ambiente de emisión (Homologacion vs Produccion).
+    /// Carga el certificado (.crt) emitido por ARCA para la solicitud generada.
     /// </summary>
-    [HttpPut("ambiente")]
-    public IActionResult CambiarAmbiente([FromBody] CambiarAmbienteRequest request)
+    [HttpPost("{sucursalId:guid}/certificado-emitido")]
+    [ProducesResponseType(typeof(EstadoFiscalSucursal), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CargarCertificadoEmitido(
+        Guid sucursalId,
+        [FromForm] IFormFile? file,
+        CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.Ambiente))
-            return BadRequest(new { message = "El ambiente es obligatorio (Homologacion o Produccion)." });
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "Se requiere el archivo del certificado que emitió ARCA." });
 
-        _ambienteActual = request.Ambiente;
-        return Ok(new { ok = true, ambiente = _ambienteActual });
+        using var memoria = new MemoryStream();
+        await file.CopyToAsync(memoria, ct);
+
+        return await EjecutarAsync(() => _configuracionFiscalService.CargarCertificadoEmitidoAsync(
+            sucursalId, memoria.ToArray(), file.FileName, ct));
+    }
+
+    /// <summary>
+    /// Carga un PKCS#12 (.pfx/.p12) ya armado por fuera del sistema.
+    /// </summary>
+    [HttpPost("{sucursalId:guid}/certificado")]
+    [ProducesResponseType(typeof(EstadoFiscalSucursal), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CargarCertificado(
+        Guid sucursalId,
+        [FromForm] IFormFile? file,
+        [FromForm] string? password,
+        CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { message = "Se requiere el archivo del certificado (.pfx o .p12)." });
+
+        using var memoria = new MemoryStream();
+        await file.CopyToAsync(memoria, ct);
+
+        return await EjecutarAsync(() => _configuracionFiscalService.CargarCertificadoAsync(
+            sucursalId, memoria.ToArray(), file.FileName, password, ct));
+    }
+
+    /// <summary>
+    /// Cambia el ambiente de emisión de una sucursal (Homologacion o Produccion).
+    /// </summary>
+    [HttpPut("{sucursalId:guid}/ambiente")]
+    [ProducesResponseType(typeof(EstadoFiscalSucursal), StatusCodes.Status200OK)]
+    public async Task<IActionResult> CambiarAmbiente(
+        Guid sucursalId,
+        [FromBody] CambiarAmbienteRequest request,
+        CancellationToken ct)
+    {
+        if (!Enum.TryParse<AmbienteFiscal>(request.Ambiente, ignoreCase: true, out var ambiente))
+            return BadRequest(new { message = "Ambiente inválido. Valores admitidos: Homologacion, Produccion." });
+
+        return await EjecutarAsync(() => _configuracionFiscalService.CambiarAmbienteAsync(sucursalId, ambiente, ct));
+    }
+
+    /// <summary>
+    /// Verifica certificado, datos del emisor y conexión con ARCA.
+    ///
+    /// Consume un Ticket de Acceso real: ARCA no entrega otro para el mismo CUIT y servicio
+    /// hasta que el vigente venza, por eso el ticket queda cacheado y se reutiliza.
+    /// </summary>
+    [HttpPost("{sucursalId:guid}/verificar")]
+    [ProducesResponseType(typeof(EstadoFiscalSucursal), StatusCodes.Status200OK)]
+    public async Task<IActionResult> Verificar(Guid sucursalId, CancellationToken ct) =>
+        await EjecutarAsync(() => _configuracionFiscalService.VerificarAsync(sucursalId, ct));
+
+    private async Task<IActionResult> EjecutarAsync(Func<Task<EstadoFiscalSucursal>> operacion)
+    {
+        try
+        {
+            return Ok(await operacion());
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 }
-
-public record TestAfipRequest(string? Ambiente);
-public record CambiarAmbienteRequest(string Ambiente);
